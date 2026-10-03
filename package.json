@@ -1,0 +1,31 @@
+{
+  "name": "ai-clinic-receptionist",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Retell-powered AI receptionist for a cosmetic clinic: booking, FAQs, lead qualification.",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "setup:agent": "node retell/setupAgent.js",
+    "setup:bland-agent": "node bland/setupAgent.js",
+    "seed:kb": "node kb/seed.js",
+    "setup:hubspot": "node scripts/setupHubspotProperties.js"
+  },
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.11.0",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "ioredis": "^5.4.1",
+    "nanoid": "^5.0.7",
+    "openai": "^4.67.3",
+    "twilio": "^5.3.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}

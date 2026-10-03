@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clinic Receptionist — Call Dashboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page:        #f9f9f7;
+    --surface:     #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:    #e1e0d9;
+    --baseline:    #c3c2b7;
+    --border:      rgba(11,11,11,0.10);
+    --series-blue: #2a78d6;
+    --series-blue-100: #cde2fb;
+    --status-good:     #0ca30c;
+    --status-warning:  #fab219;
+    --status-critical: #d03b3b;
+    --status-good-bg:     #e3f6e3;
+    --status-warning-bg:  #fdf0d9;
+    --status-critical-bg: #fbe4e4;
+    --status-muted-bg:    #eeede8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page:        #0d0d0d;
+      --surface:     #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:    #2c2c2a;
+      --baseline:    #383835;
+      --border:      rgba(255,255,255,0.10);
+      --series-blue: #3987e5;
+      --series-blue-100: #184f95;
+      --status-good:     #0ca30c;
+      --status-warning:  #fab219;
+      --status-critical: #d03b3b;
+      --status-good-bg:     #113311;
+      --status-warning-bg:  #3a2c0d;
+      --status-critical-bg: #3a1414;
+      --status-muted-bg:    #262622;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 28px;
+  }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
+  .sub { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-good); display: inline-block; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .tile .value { font-size: 24px; font-weight: 600; line-height: 1.2; }
+  .tile .label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .panels { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; margin-bottom: 12px; align-items: start; }
+  @media (max-width: 860px) { .panels { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(2, 1fr); } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+  }
+  .card h2 { font-size: 13px; font-weight: 600; margin: 0 0 14px; display: flex; justify-content: space-between; align-items: center; }
+  .card h2 .toggle { font-size: 11px; font-weight: 500; color: var(--text-secondary); cursor: pointer; user-select: none; }
+  .card h2 .toggle:hover { color: var(--text-primary); }
+
+  /* --- bar chart --- */
+  .chart-wrap { position: relative; }
+  .chart { display: flex; align-items: flex-end; gap: 12px; height: 120px; padding-top: 18px; position: relative; }
+  .chart .gridline { position: absolute; left: 0; right: 0; border-top: 1px solid var(--gridline); font-size: 10px; color: var(--text-muted); }
+  .chart .gridline span { position: absolute; left: 0; top: -14px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; z-index: 1; }
+  .bar { width: 22px; max-width: 24px; background: var(--series-blue-100); border-radius: 4px 4px 0 0; position: relative; cursor: pointer; transition: background 0.1s; }
+  .bar.today { background: var(--series-blue); }
+  .bar:hover { background: var(--series-blue); }
+  .bar-label { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+  .bar-value-tip {
+    position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: var(--text-primary); color: var(--page); font-size: 11px; padding: 3px 7px; border-radius: 5px;
+    white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.1s;
+  }
+  .bar-col:hover .bar-value-tip { opacity: 1; }
+  .chart-table { display: none; width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  .chart-table.shown { display: table; }
+  .chart-table th, .chart-table td { text-align: left; padding: 4px 8px; color: var(--text-secondary); }
+  .chart.hidden-for-table { display: none; }
+
+  /* --- integrations --- */
+  .integrations { display: flex; flex-direction: column; gap: 8px; }
+  .integration-row { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; }
+  .integration-row .name { color: var(--text-secondary); text-transform: capitalize; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+  .pill.live { background: var(--status-good-bg); color: var(--status-good); }
+  .pill.mock { background: var(--status-muted-bg); color: var(--text-secondary); }
+  .pill.escalated { background: var(--status-critical-bg); color: var(--status-critical); }
+  .pill.ok { background: var(--status-good-bg); color: var(--status-good); }
+  .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  /* --- table --- */
+  table.calls { width: 100%; border-collapse: collapse; }
+  table.calls th, table.calls td { text-align: left; padding: 8px 6px; font-size: 12.5px; border-bottom: 1px solid var(--gridline); }
+  table.calls th { color: var(--text-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; }
+  table.calls td.mono { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>Clinic Receptionist — Call Dashboard</h1>
+  <div class="sub"><span class="dot"></span> Live — refreshes every 5s</div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="panels">
+    <div class="card">
+      <h2>Calls — last 7 days <span class="toggle" id="chartToggle">View as table</span></h2>
+      <div class="chart-wrap">
+        <div class="chart" id="chart"></div>
+        <table class="chart-table" id="chartTable">
+          <thead><tr><th>Date</th><th>Calls</th></tr></thead>
+          <tbody id="chartTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Integrations</h2>
+      <div class="integrations" id="integrations"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Recent calls</h2>
+    <div id="callsWrap"></div>
+  </div>
+
+<script>
+function pill(mode) {
+  const isLive = /\(live\)/.test(mode);
+  const label = isLive ? mode.replace(/\s*\(live\)/, '') : 'mock';
+  return `<span class="pill ${isLive ? 'live' : 'mock'}">${label}</span>`;
+}
+
+const INTEGRATION_LABELS = { scheduling: 'Scheduling', crm: 'CRM', sms: 'SMS', rag: 'RAG' };
+
+function escalatedPill(v) {
+  return v
+    ? '<span class="pill escalated">Escalated</span>'
+    : '<span class="pill ok">Handled</span>';
+}
+
+async function refresh() {
+  const stats = await fetch('/api/dashboard/stats').then(r => r.json());
+
+  const latency = stats.avgResponseLatencyMs != null ? (stats.avgResponseLatencyMs / 1000).toFixed(2) + 's' : '—';
+  document.getElementById('kpis').innerHTML = `
+    <div class="tile"><div class="value">${stats.totalCalls}</div><div class="label">Total calls</div></div>
+    <div class="tile"><div class="value">${stats.callAnswerRate}%</div><div class="label">Answer rate</div></div>
+    <div class="tile"><div class="value">${stats.totalBookings}</div><div class="label">Bookings</div></div>
+    <div class="tile"><div class="value">${stats.conversionRate}%</div><div class="label">Conversion</div></div>
+    <div class="tile"><div class="value">${stats.dropOffRate}%</div><div class="label">Drop-off rate</div></div>
+    <div class="tile"><div class="value">${stats.escalationRate}%</div><div class="label">Escalation rate</div></div>
+    <div class="tile"><div class="value">${stats.missed}</div><div class="label">Missed calls</div></div>
+    <div class="tile"><div class="value">${latency}</div><div class="label">Avg response latency</div></div>
+  `;
+
+  const days = stats.dailyCalls || [];
+  const max = Math.max(1, ...days.map(d => d.count));
+  const todayKey = new Date().toISOString().slice(0, 10);
+  document.getElementById('chart').innerHTML =
+    `<div class="gridline" style="bottom: 100%;"><span>${max}</span></div>` +
+    `<div class="gridline" style="bottom: 0;"><span>0</span></div>` +
+    days.map(d => {
+      const h = Math.round((d.count / max) * 100);
+      const label = new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+      return `
+        <div class="bar-col">
+          <div class="bar-value-tip">${d.count} call${d.count === 1 ? '' : 's'} — ${d.date}</div>
+          <div class="bar ${d.date === todayKey ? 'today' : ''}" style="height:${Math.max(h, 2)}%"></div>
+          <div class="bar-label">${label}</div>
+        </div>`;
+    }).join('');
+  document.getElementById('chartTableBody').innerHTML =
+    days.map(d => `<tr><td>${d.date}</td><td>${d.count}</td></tr>`).join('');
+
+  document.getElementById('integrations').innerHTML = Object.entries(stats.integrations).map(([name, mode]) => `
+    <div class="integration-row"><span class="name">${INTEGRATION_LABELS[name] || name}</span>${pill(mode)}</div>
+  `).join('');
+
+  const calls = await fetch('/api/dashboard/calls').then(r => r.json());
+  const callsWrap = document.getElementById('callsWrap');
+  if (!calls.length) {
+    callsWrap.innerHTML = '<div class="empty-state">No calls yet — run a Test Call in the Retell dashboard or bash scripts/testFunctionsLocally.sh to see data here.</div>';
+  } else {
+    callsWrap.innerHTML = `
+      <table class="calls">
+        <thead><tr><th>Call ID</th><th>From</th><th>Status</th><th>Started</th><th>Outcome</th></tr></thead>
+        <tbody>
+          ${calls.map(c => `
+            <tr>
+              <td class="mono">${c.call_id.slice(0, 14)}${c.call_id.length > 14 ? '…' : ''}</td>
+              <td class="mono">${c.from_number || '—'}</td>
+              <td>${c.status || '—'}</td>
+              <td class="mono">${c.started_at ? new Date(c.started_at).toLocaleString() : '—'}</td>
+              <td>${escalatedPill(c.escalated)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  }
+}
+
+document.getElementById('chartToggle').addEventListener('click', () => {
+  const chart = document.getElementById('chart');
+  const table = document.getElementById('chartTable');
+  const showingTable = table.classList.toggle('shown');
+  chart.classList.toggle('hidden-for-table', showingTable);
+  document.getElementById('chartToggle').textContent = showingTable ? 'View as chart' : 'View as table';
+});
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
