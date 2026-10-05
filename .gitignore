@@ -7,3 +7,4 @@ data/*.db-journal
 retell/.deployed-agent.json
 bland/.agent-config.json
 vapi/.deployed-assistant.json
+.claude/launch.json

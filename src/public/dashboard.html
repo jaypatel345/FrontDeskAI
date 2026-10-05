@@ -4,156 +4,293 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>FrontDesk AI — Call Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" />
 <style>
   :root {
     color-scheme: light;
-    --page:        #f9f9f7;
-    --surface:     #fcfcfb;
-    --text-primary:   #0b0b0b;
-    --text-secondary: #52514e;
-    --text-muted:     #898781;
-    --gridline:    #e1e0d9;
-    --baseline:    #c3c2b7;
-    --border:      rgba(11,11,11,0.10);
-    --series-blue: #2a78d6;
-    --series-blue-100: #cde2fb;
-    --status-good:     #0ca30c;
-    --status-warning:  #fab219;
-    --status-critical: #d03b3b;
-    --status-good-bg:     #e3f6e3;
-    --status-warning-bg:  #fdf0d9;
-    --status-critical-bg: #fbe4e4;
-    --status-muted-bg:    #eeede8;
+    --bg:      #f6f7f9;
+    --panel:   #ffffff;
+    --ink:     #111318;
+    --ink-2:   #4b5161;
+    --ink-3:   #8a90a0;
+    --line:    #e6e8ec;
+    --soft:    #f2f3f6;
+    --accent:  #3b5bfd;
+    --accent-soft: #eef1ff;
+    --good:    #12804a;
+    --good-bg: #e8f6ee;
+    --bad:     #c4372f;
+    --bad-bg:  #fcecea;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       color-scheme: dark;
-      --page:        #0d0d0d;
-      --surface:     #1a1a19;
-      --text-primary:   #ffffff;
-      --text-secondary: #c3c2b7;
-      --text-muted:     #898781;
-      --gridline:    #2c2c2a;
-      --baseline:    #383835;
-      --border:      rgba(255,255,255,0.10);
-      --series-blue: #3987e5;
-      --series-blue-100: #184f95;
-      --status-good:     #0ca30c;
-      --status-warning:  #fab219;
-      --status-critical: #d03b3b;
-      --status-good-bg:     #113311;
-      --status-warning-bg:  #3a2c0d;
-      --status-critical-bg: #3a1414;
-      --status-muted-bg:    #262622;
+      --bg:      #0e0f12;
+      --panel:   #16181d;
+      --ink:     #f1f2f5;
+      --ink-2:   #b3b8c4;
+      --ink-3:   #7d8392;
+      --line:    #262932;
+      --soft:    #1d2027;
+      --accent:  #7088ff;
+      --accent-soft: #1e2440;
+      --good:    #4cc38a;
+      --good-bg: #13291e;
+      --bad:     #f0786f;
+      --bad-bg:  #33191a;
     }
   }
 
   * { box-sizing: border-box; }
+  html, body { margin: 0; }
   body {
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: var(--page);
-    color: var(--text-primary);
-    margin: 0;
-    padding: 28px;
+    font: 14px/1.45 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
   }
-  h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
-  .sub { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; display: flex; align-items: center; gap: 6px; }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--status-good); display: inline-block; }
 
-  .kpis { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; margin-bottom: 20px; }
-  .tile {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    padding: 14px 16px;
+  /* --- shell: sidebar + main --- */
+  .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+  .sidebar {
+    background: var(--panel); border-right: 1px solid var(--line);
+    padding: 18px 12px; position: sticky; top: 0; height: 100vh;
   }
-  .tile .value { font-size: 24px; font-weight: 600; line-height: 1.2; }
-  .tile .label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-
-  .panels { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; margin-bottom: 12px; align-items: start; }
-  @media (max-width: 860px) { .panels { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(2, 1fr); } }
-
-  .card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 22px; font-weight: 600; font-size: 15px; }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px; background: var(--ink); color: var(--panel);
+    display: grid; place-items: center; font-size: 13px; font-weight: 600;
   }
-  .card h2 { font-size: 13px; font-weight: 600; margin: 0 0 14px; display: flex; justify-content: space-between; align-items: center; }
-  .card h2 .toggle { font-size: 11px; font-weight: 500; color: var(--text-secondary); cursor: pointer; user-select: none; }
-  .card h2 .toggle:hover { color: var(--text-primary); }
-
-  /* --- bar chart --- */
-  .chart-wrap { position: relative; }
-  .chart { display: flex; align-items: flex-end; gap: 12px; height: 120px; padding-top: 18px; position: relative; }
-  .chart .gridline { position: absolute; left: 0; right: 0; border-top: 1px solid var(--gridline); font-size: 10px; color: var(--text-muted); }
-  .chart .gridline span { position: absolute; left: 0; top: -14px; }
-  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; z-index: 1; }
-  .bar { width: 22px; max-width: 24px; background: var(--series-blue-100); border-radius: 4px 4px 0 0; position: relative; cursor: pointer; transition: background 0.1s; }
-  .bar.today { background: var(--series-blue); }
-  .bar:hover { background: var(--series-blue); }
-  .bar-label { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
-  .bar-value-tip {
-    position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
-    background: var(--text-primary); color: var(--page); font-size: 11px; padding: 3px 7px; border-radius: 5px;
-    white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.1s;
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav a {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px;
+    color: var(--ink-2); text-decoration: none; font-weight: 500;
   }
-  .bar-col:hover .bar-value-tip { opacity: 1; }
-  .chart-table { display: none; width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
-  .chart-table.shown { display: table; }
-  .chart-table th, .chart-table td { text-align: left; padding: 4px 8px; color: var(--text-secondary); }
+  .nav a.active { background: var(--accent-soft); color: var(--accent); }
+  .nav svg { width: 16px; height: 16px; flex: none; }
+  .sidebar-foot { position: absolute; left: 12px; right: 12px; bottom: 18px; padding: 10px; font-size: 12px; color: var(--ink-3); }
+
+  main { min-width: 0; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 18px 28px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  .topbar h1 { font-size: 18px; font-weight: 600; margin: 0; }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .live::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
+  .badge {
+    font-size: 12px; font-weight: 500; color: var(--ink-2); background: var(--soft);
+    border: 1px solid var(--line); padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+  }
+  .content { padding: 24px 28px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; max-width: 1280px; }
+  .view[hidden] { display: none; }
+  /* Grid children default to min-width: auto, which lets the wide calls table stretch the page. */
+  .content > *, .row > * { min-width: 0; }
+
+  /* --- cards --- */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 18px; border-bottom: 1px solid var(--line);
+  }
+  .card-head h2 { font-size: 14px; font-weight: 600; margin: 0; }
+  .card-head .meta { font-size: 12px; color: var(--ink-3); }
+  .card-body { padding: 18px; }
+  .link-btn {
+    text-decoration: none;
+    font: inherit; font-size: 12px; font-weight: 500; color: var(--accent);
+    background: none; border: 0; padding: 0; cursor: pointer;
+  }
+
+  /* --- stats strip --- */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .stat { padding: 16px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .stat:nth-child(4n) { border-right: 0; }
+  .stat:nth-last-child(-n+4) { border-bottom: 0; }
+  .stat .label { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+  .stat .value { font-size: 22px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+  .row { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+
+  /* --- chart --- */
+  .chart { display: flex; align-items: flex-end; gap: 14px; height: 150px; padding-top: 20px; position: relative; }
+  .chart .gridline { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--line); font-size: 10px; color: var(--ink-3); }
+  .chart .gridline span { position: absolute; right: 0; top: -15px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; z-index: 1; }
+  .bar { width: 100%; max-width: 28px; background: var(--accent-soft); border-radius: 4px 4px 0 0; }
+  .bar.today { background: var(--accent); }
+  .bar-label { font-size: 11px; color: var(--ink-3); margin-top: 8px; }
   .chart.hidden-for-table { display: none; }
+  .chart-table { display: none; width: 100%; border-collapse: collapse; }
+  .chart-table.shown { display: table; }
+  .chart-table td, .chart-table th { padding: 6px 0; font-size: 13px; text-align: left; border-bottom: 1px solid var(--line); }
+  .chart-table th { color: var(--ink-3); font-weight: 500; font-size: 12px; }
 
   /* --- integrations --- */
-  .integrations { display: flex; flex-direction: column; gap: 8px; }
-  .integration-row { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; }
-  .integration-row .name { color: var(--text-secondary); text-transform: capitalize; }
-  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
-  .pill.live { background: var(--status-good-bg); color: var(--status-good); }
-  .pill.mock { background: var(--status-muted-bg); color: var(--text-secondary); }
-  .pill.escalated { background: var(--status-critical-bg); color: var(--status-critical); }
-  .pill.ok { background: var(--status-good-bg); color: var(--status-good); }
-  .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .integrations { display: flex; flex-direction: column; }
+  .integration-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .integration-row:last-child { border-bottom: 0; }
+  .integration-row .name { font-weight: 500; }
+  .integration-row .desc { display: block; font-size: 12px; color: var(--ink-3); font-weight: 400; margin-top: 2px; white-space: normal; }
+  .integration-row { gap: 16px; }
 
-  /* --- table --- */
-  table.calls { width: 100%; border-collapse: collapse; }
-  table.calls th, table.calls td { text-align: left; padding: 8px 6px; font-size: 12.5px; border-bottom: 1px solid var(--gridline); }
-  table.calls th { color: var(--text-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.02em; }
-  table.calls td.mono { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
-  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 13px; }
+  /* --- pills --- */
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+  .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.live, .pill.ok { background: var(--good-bg); color: var(--good); }
+  .pill.mock { background: var(--soft); color: var(--ink-2); }
+  .pill.escalated { background: var(--bad-bg); color: var(--bad); }
+
+  /* --- calls table --- */
+  .table-wrap { overflow-x: auto; }
+  table.calls { width: 100%; border-collapse: collapse; min-width: 560px; }
+  table.calls th {
+    text-align: left; font-size: 12px; font-weight: 500; color: var(--ink-3);
+    background: var(--soft); padding: 9px 18px; border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  table.calls td { padding: 12px 18px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.calls tr:last-child td { border-bottom: 0; }
+  .mono { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+  .caller { display: flex; align-items: center; gap: 10px; }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--soft); border: 1px solid var(--line);
+    display: grid; place-items: center; color: var(--ink-3);
+  }
+  .avatar svg { width: 14px; height: 14px; }
+  .empty-state { text-align: center; padding: 48px 20px; color: var(--ink-3); }
+
+  /* --- mobile: sidebar becomes a top bar --- */
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+    .sidebar {
+      position: static; height: auto; padding: 12px 16px 0; border-right: 0; border-bottom: 1px solid var(--line);
+    }
+    .brand { padding: 2px 0 12px; }
+    .nav { flex-direction: row; gap: 4px; overflow-x: auto; }
+    .nav a { padding: 8px 10px 10px; border-radius: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+    .nav a.active { background: none; border-bottom-color: var(--accent); }
+    .sidebar-foot { display: none; }
+    .topbar { padding: 14px 16px; }
+    .content { padding: 16px 16px 32px; gap: 12px; }
+    .row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stat:nth-child(4n) { border-right: 1px solid var(--line); }
+    .stat:nth-child(2n) { border-right: 0; }
+    .stat:nth-last-child(-n+4) { border-bottom: 1px solid var(--line); }
+    .stat:nth-last-child(-n+2) { border-bottom: 0; }
+    .stat .value { font-size: 20px; }
+    .card-head, .card-body { padding-left: 16px; padding-right: 16px; }
+    table.calls th, table.calls td { padding-left: 16px; padding-right: 16px; }
+  }
 </style>
 </head>
 <body>
-  <h1>FrontDesk AI — Call Dashboard</h1>
-  <div class="sub"><span class="dot"></span> Live — refreshes every 5s</div>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">F</span> FrontDesk AI</div>
+    <nav class="nav">
+      <a href="#overview" class="active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        Overview
+      </a>
+      <a href="#calls">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>
+        Calls
+      </a>
+      <a href="#integrations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="4"/></svg>
+        Integrations
+      </a>
+    </nav>
+    <div class="sidebar-foot">Demo Aesthetics Clinic</div>
+  </aside>
 
-  <div class="kpis" id="kpis"></div>
-
-  <div class="panels">
-    <div class="card">
-      <h2>Calls — last 7 days <span class="toggle" id="chartToggle">View as table</span></h2>
-      <div class="chart-wrap">
-        <div class="chart" id="chart"></div>
-        <table class="chart-table" id="chartTable">
-          <thead><tr><th>Date</th><th>Calls</th></tr></thead>
-          <tbody id="chartTableBody"></tbody>
-        </table>
+  <main>
+    <header class="topbar">
+      <div>
+        <h1 id="pageTitle">Overview</h1>
+        <div class="live">Live · refreshes every 5s</div>
       </div>
-    </div>
-    <div class="card">
-      <h2>Integrations</h2>
-      <div class="integrations" id="integrations"></div>
-    </div>
-  </div>
+      <span class="badge">Demo build</span>
+    </header>
 
-  <div class="card">
-    <h2>Recent calls</h2>
-    <div id="callsWrap"></div>
-  </div>
+    <div class="content view" data-view="overview">
+      <section class="card">
+        <div class="stats" id="kpis"></div>
+      </section>
+
+      <div class="row">
+        <section class="card">
+          <div class="card-head">
+            <h2>Calls · last 7 days</h2>
+            <button class="link-btn" id="chartToggle" type="button">View as table</button>
+          </div>
+          <div class="card-body">
+            <div class="chart" id="chart"></div>
+            <table class="chart-table" id="chartTable">
+              <thead><tr><th>Date</th><th>Calls</th></tr></thead>
+              <tbody id="chartTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2>Integrations</h2>
+            <a class="link-btn" href="#integrations">Details</a>
+          </div>
+          <div class="card-body"><div class="integrations" id="integrationsSummary"></div></div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Recent calls</h2>
+          <a class="link-btn" href="#calls">View all calls</a>
+        </div>
+        <div id="callsRecent"></div>
+      </section>
+    </div>
+
+    <div class="content view" data-view="calls" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>All calls</h2>
+          <span class="meta" id="callsCount"></span>
+        </div>
+        <div id="callsAll"></div>
+      </section>
+    </div>
+
+    <div class="content view" data-view="integrations" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Connected services</h2>
+          <span class="meta">Live = real account · Mock = simulated, no key set</span>
+        </div>
+        <div class="card-body"><div class="integrations" id="integrationsDetail"></div></div>
+      </section>
+    </div>
+  </main>
+</div>
 
 <script>
 function pill(mode) {
   const isLive = /\(live\)/.test(mode);
-  const label = isLive ? mode.replace(/\s*\(live\)/, '') : 'mock';
+  const provider = mode.replace(/\s*\(.*\)$/, '').trim();
+  const label = isLive ? `${PROVIDER_NAMES[provider] || provider} · live` : 'Mock';
   return `<span class="pill ${isLive ? 'live' : 'mock'}">${label}</span>`;
 }
 
-const INTEGRATION_LABELS = { scheduling: 'Scheduling', crm: 'CRM', sms: 'SMS', rag: 'RAG' };
+const INTEGRATION_LABELS = { scheduling: 'Scheduling', crm: 'CRM', sms: 'SMS', rag: 'Knowledge base' };
+const INTEGRATION_INFO = {
+  scheduling: 'Checks open slots and books, moves and cancels appointments.',
+  crm: 'Saves every caller as a lead for follow-up.',
+  sms: 'Texts the caller a confirmation after booking.',
+  rag: 'Answers questions about services, prices and hours.',
+};
+const PROVIDER_NAMES = { 'cal.com': 'Cal.com', hubspot: 'HubSpot', twilio: 'Twilio' };
 
 // Call fields come from webhook payloads, so escape them before they go into innerHTML.
 function esc(v) {
@@ -166,33 +303,37 @@ function escalatedPill(v) {
     : '<span class="pill ok">Handled</span>';
 }
 
+const PHONE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
+
+function stat(label, value) {
+  return `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+}
+
 async function refresh() {
   const stats = await fetch('/api/dashboard/stats').then(r => r.json());
 
   const latency = stats.avgResponseLatencyMs != null ? (stats.avgResponseLatencyMs / 1000).toFixed(2) + 's' : '—';
-  document.getElementById('kpis').innerHTML = `
-    <div class="tile"><div class="value">${stats.totalCalls}</div><div class="label">Total calls</div></div>
-    <div class="tile"><div class="value">${stats.callAnswerRate}%</div><div class="label">Answer rate</div></div>
-    <div class="tile"><div class="value">${stats.totalBookings}</div><div class="label">Bookings</div></div>
-    <div class="tile"><div class="value">${stats.conversionRate}%</div><div class="label">Conversion</div></div>
-    <div class="tile"><div class="value">${stats.dropOffRate}%</div><div class="label">Drop-off rate</div></div>
-    <div class="tile"><div class="value">${stats.escalationRate}%</div><div class="label">Escalation rate</div></div>
-    <div class="tile"><div class="value">${stats.missed}</div><div class="label">Missed calls</div></div>
-    <div class="tile"><div class="value">${latency}</div><div class="label">Avg response latency</div></div>
-  `;
+  document.getElementById('kpis').innerHTML =
+    stat('Total calls', stats.totalCalls) +
+    stat('Answer rate', stats.callAnswerRate + '%') +
+    stat('Bookings', stats.totalBookings) +
+    stat('Conversion', stats.conversionRate + '%') +
+    stat('Drop-off rate', stats.dropOffRate + '%') +
+    stat('Escalation rate', stats.escalationRate + '%') +
+    stat('Missed calls', stats.missed) +
+    stat('Avg response latency', latency);
 
   const days = stats.dailyCalls || [];
   const max = Math.max(1, ...days.map(d => d.count));
   const todayKey = new Date().toISOString().slice(0, 10);
   document.getElementById('chart').innerHTML =
     `<div class="gridline" style="bottom: 100%;"><span>${max}</span></div>` +
-    `<div class="gridline" style="bottom: 0;"><span>0</span></div>` +
+    `<div class="gridline" style="bottom: 0;"></div>` +
     days.map(d => {
       const h = Math.round((d.count / max) * 100);
       const label = new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
       return `
-        <div class="bar-col">
-          <div class="bar-value-tip">${d.count} call${d.count === 1 ? '' : 's'} — ${d.date}</div>
+        <div class="bar-col" title="${d.count} call${d.count === 1 ? '' : 's'} — ${d.date}">
           <div class="bar ${d.date === todayKey ? 'today' : ''}" style="height:${Math.max(h, 2)}%"></div>
           <div class="bar-label">${label}</div>
         </div>`;
@@ -200,32 +341,59 @@ async function refresh() {
   document.getElementById('chartTableBody').innerHTML =
     days.map(d => `<tr><td>${d.date}</td><td>${d.count}</td></tr>`).join('');
 
-  document.getElementById('integrations').innerHTML = Object.entries(stats.integrations).map(([name, mode]) => `
+  const integrations = Object.entries(stats.integrations);
+  document.getElementById('integrationsSummary').innerHTML = integrations.map(([name, mode]) => `
     <div class="integration-row"><span class="name">${INTEGRATION_LABELS[name] || name}</span>${pill(mode)}</div>
+  `).join('');
+  document.getElementById('integrationsDetail').innerHTML = integrations.map(([name, mode]) => `
+    <div class="integration-row">
+      <span class="name">${INTEGRATION_LABELS[name] || name}<span class="desc">${INTEGRATION_INFO[name] || ''}</span></span>
+      ${pill(mode)}
+    </div>
   `).join('');
 
   const calls = await fetch('/api/dashboard/calls').then(r => r.json());
-  const callsWrap = document.getElementById('callsWrap');
-  if (!calls.length) {
-    callsWrap.innerHTML = '<div class="empty-state">No calls yet — run a Test Call in the Retell dashboard or bash scripts/testFunctionsLocally.sh to see data here.</div>';
-  } else {
-    callsWrap.innerHTML = `
-      <table class="calls">
-        <thead><tr><th>Call ID</th><th>From</th><th>Status</th><th>Started</th><th>Outcome</th></tr></thead>
-        <tbody>
-          ${calls.map(c => `
-            <tr>
-              <td class="mono">${esc(c.call_id.slice(0, 14))}${c.call_id.length > 14 ? '…' : ''}</td>
-              <td class="mono">${c.from_number ? esc(c.from_number) : '—'}</td>
-              <td>${c.status ? esc(c.status) : '—'}</td>
-              <td class="mono">${c.started_at ? new Date(c.started_at).toLocaleString() : '—'}</td>
-              <td>${escalatedPill(c.escalated)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>`;
-  }
+  document.getElementById('callsCount').textContent = calls.length ? `Latest ${calls.length}` : '';
+  document.getElementById('callsRecent').innerHTML = callsTable(calls.slice(0, 5));
+  document.getElementById('callsAll').innerHTML = callsTable(calls);
 }
+
+function callsTable(calls) {
+  if (!calls.length) {
+    return '<div class="empty-state">No calls yet — run a test call from the Vapi dashboard to see data here.</div>';
+  }
+  return `
+    <div class="table-wrap">
+    <table class="calls">
+      <thead><tr><th>Caller</th><th>Call ID</th><th>Status</th><th>Started</th><th>Outcome</th></tr></thead>
+      <tbody>
+        ${calls.map(c => `
+          <tr>
+            <td><div class="caller"><span class="avatar">${PHONE_ICON}</span><span class="mono">${c.from_number ? esc(c.from_number) : 'Web call'}</span></div></td>
+            <td class="mono" title="${esc(c.call_id)}">${esc(c.call_id.slice(0, 14))}${c.call_id.length > 14 ? '…' : ''}</td>
+            <td>${c.status ? esc(c.status.replace(/_/g, ' ')) : '—'}</td>
+            <td class="mono">${c.started_at ? new Date(c.started_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
+            <td>${escalatedPill(c.escalated)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+// One page, three views: the URL hash (#overview, #calls, #integrations) picks which one shows,
+// so the sidebar links, "View all calls" and the browser back button all work.
+const VIEW_TITLES = { overview: 'Overview', calls: 'Calls', integrations: 'Integrations' };
+function showView() {
+  const view = VIEW_TITLES[location.hash.slice(1)] ? location.hash.slice(1) : 'overview';
+  document.querySelectorAll('.view').forEach(el => { el.hidden = el.dataset.view !== view; });
+  document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + view));
+  document.getElementById('pageTitle').textContent = VIEW_TITLES[view];
+  document.title = `${VIEW_TITLES[view]} — FrontDesk AI`;
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', showView);
+showView();
 
 document.getElementById('chartToggle').addEventListener('click', () => {
   const chart = document.getElementById('chart');
