@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { runTool } from '../tools/handlers.js';
 import { upsertCall } from '../db.js';
+import { logCallToCrm } from '../services/crm.js';
 
 // Vapi sends everything to one server URL as { message: { type, call, ... } } - tool calls and
 // call lifecycle events alike (https://docs.vapi.ai/server-url/events). Auth is the same
@@ -86,6 +87,19 @@ function handleEndOfCallReport(message) {
     escalated: disconnection === 'call_transfer' ? 1 : 0,
     avg_response_latency_ms: Number.isFinite(latency) ? Math.round(latency) : null,
   });
+
+  // Not awaited - Vapi doesn't need HubSpot's answer, and a slow CRM shouldn't hold the webhook.
+  logCallToCrm({
+    callId: call.id,
+    fromNumber: call.customer?.number || null,
+    toNumber: call.phoneNumber?.number || null,
+    startedAt: call.startedAt ? Date.parse(call.startedAt) : null,
+    endedAt: call.endedAt ? Date.parse(call.endedAt) : Date.now(),
+    outcome: message.endedReason ?? call.endedReason ?? null,
+    summary: message.analysis?.summary || message.summary || null,
+    transcript: artifact.transcript || null,
+    recordingUrl: artifact.recording?.mono?.combinedUrl || artifact.recordingUrl || null,
+  }).catch((e) => console.error('[crm call log failed]', e.response?.data?.message || e.message));
 }
 
 vapiWebhookRouter.post('/', async (req, res) => {

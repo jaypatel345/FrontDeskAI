@@ -4,6 +4,7 @@ import request from 'supertest';
 import { app, futureIso } from './helpers.js';
 import { normaliseEndedReason } from '../src/routes/vapiWebhook.js';
 import { recentCalls } from '../src/db.js';
+import { buildCallProperties } from '../src/services/crm.js';
 import { assistant } from '../vapi/assistant.js';
 
 const post = (message, secret = process.env.FUNCTIONS_SECRET) => {
@@ -109,6 +110,32 @@ describe('Vapi call events', () => {
     assert.equal(normaliseEndedReason('customer-did-not-answer'), 'dial_no_answer');
     assert.equal(normaliseEndedReason('voicemail'), 'voicemail_reached');
     assert.equal(normaliseEndedReason(null), null);
+  });
+});
+
+describe('HubSpot call log', () => {
+  test('builds a timeline entry with duration, numbers and an escaped transcript', () => {
+    const props = buildCallProperties({
+      callId: 'vapi-call-8',
+      fromNumber: '+15552010088',
+      startedAt: Date.parse('2026-10-05T12:00:00Z'),
+      endedAt: Date.parse('2026-10-05T12:02:30Z'),
+      outcome: 'customer-ended-call',
+      summary: 'Caller booked Botox.',
+      transcript: 'AI: Hi <there>\nUser: Book Botox',
+    });
+    assert.equal(props.hs_timestamp, '2026-10-05T12:00:00.000Z');
+    assert.equal(props.hs_call_duration, '150000');
+    assert.equal(props.hs_call_from_number, '+15552010088');
+    assert.equal(props.hs_call_title, 'AI receptionist call - customer-ended-call');
+    assert.match(props.hs_call_body, /Caller booked Botox\./);
+    assert.match(props.hs_call_body, /Hi &lt;there&gt;<br>User: Book Botox/);
+  });
+
+  test('a web call with no number or timing still builds', () => {
+    const props = buildCallProperties({ callId: 'web-1', endedAt: Date.now() });
+    assert.equal(props.hs_call_from_number, undefined);
+    assert.equal(props.hs_call_duration, undefined);
   });
 });
 
