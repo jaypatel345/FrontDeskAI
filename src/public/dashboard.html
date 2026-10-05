@@ -155,6 +155,11 @@ function pill(mode) {
 
 const INTEGRATION_LABELS = { scheduling: 'Scheduling', crm: 'CRM', sms: 'SMS', rag: 'RAG' };
 
+// Call fields come from webhook payloads, so escape them before they go into innerHTML.
+function esc(v) {
+  return String(v).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
+
 function escalatedPill(v) {
   return v
     ? '<span class="pill escalated">Escalated</span>'
@@ -210,9 +215,9 @@ async function refresh() {
         <tbody>
           ${calls.map(c => `
             <tr>
-              <td class="mono">${c.call_id.slice(0, 14)}${c.call_id.length > 14 ? '…' : ''}</td>
-              <td class="mono">${c.from_number || '—'}</td>
-              <td>${c.status || '—'}</td>
+              <td class="mono">${esc(c.call_id.slice(0, 14))}${c.call_id.length > 14 ? '…' : ''}</td>
+              <td class="mono">${c.from_number ? esc(c.from_number) : '—'}</td>
+              <td>${c.status ? esc(c.status) : '—'}</td>
               <td class="mono">${c.started_at ? new Date(c.started_at).toLocaleString() : '—'}</td>
               <td>${escalatedPill(c.escalated)}</td>
             </tr>

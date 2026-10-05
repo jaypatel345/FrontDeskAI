@@ -2,6 +2,12 @@ import { config } from '../src/config.js';
 
 const base = config.baseUrl;
 
+// Sent on every tool call so the backend can reject anyone else hitting /functions/*.
+const headers = {
+  'Content-Type': 'application/json',
+  ...(config.functionsSecret ? { 'x-functions-secret': config.functionsSecret } : {}),
+};
+
 // Bland's tool schema: https://docs.bland.ai/tutorials/custom-tools
 // body uses {{input.<field>}} templating filled from what the LLM extracted against
 // input_schema; response uses JSONPath to pull values back out into named variables the
@@ -16,7 +22,7 @@ export const searchKnowledgeBaseTool = {
   speech: 'Let me check that for you.',
   url: `${base}/functions/search-knowledge-base`,
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers,
   body: { query: '{{input.query}}' },
   input_schema: {
     type: 'object',
@@ -35,7 +41,7 @@ export const checkAvailabilityTool = {
   speech: 'Let me check the calendar.',
   url: `${base}/functions/check-availability`,
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers,
   body: { service: '{{input.service}}', date_from: '{{input.date_from}}', date_to: '{{input.date_to}}' },
   input_schema: {
     type: 'object',
@@ -62,7 +68,7 @@ export const bookAppointmentTool = {
   speech: "I'm booking that now.",
   url: `${base}/functions/book-appointment`,
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers,
   body: {
     call_id: '{{call_id}}',
     service: '{{input.service}}',
@@ -93,7 +99,7 @@ export const rescheduleAppointmentTool = {
   speech: "I'm moving that for you.",
   url: `${base}/functions/reschedule-appointment`,
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers,
   body: { call_id: '{{call_id}}', phone: '{{input.phone}}', new_start_time: '{{input.new_start_time}}' },
   input_schema: {
     type: 'object',
@@ -113,7 +119,7 @@ export const cancelAppointmentTool = {
   speech: "I'm cancelling that now.",
   url: `${base}/functions/cancel-appointment`,
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers,
   body: { phone: '{{input.phone}}' },
   input_schema: {
     type: 'object',
@@ -133,7 +139,7 @@ export const captureLeadTool = {
   speech: '',
   url: `${base}/functions/capture-lead`,
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers,
   body: {
     call_id: '{{call_id}}',
     name: '{{input.name}}',

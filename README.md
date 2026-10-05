@@ -1,4 +1,4 @@
-# AI Clinic Receptionist (Retell)
+# AI Clinic Receptionist (Vapi · Retell · Bland)
 
 Inbound AI receptionist for a U.S. cosmetic clinic: answers FAQs, qualifies leads, books /
 reschedules / cancels appointments, pushes to CRM, sends SMS confirmations, and logs every call.
@@ -7,7 +7,15 @@ Original project spec: [REQUIREMENTS.md](REQUIREMENTS.md).
 
 ## How it's built
 
-- **Voice + LLM turn-taking**: Retell's native `retell-llm` (not a custom WebSocket LLM) — this
+- **Voice platform**: **Vapi** is the one in use (free signup credit, browser test calls, per-turn
+  latency in its call logs). Retell and Bland integrations are kept working alongside it — see
+  [Voice platforms](#voice-platforms) below.
+- **Tools**: one implementation in [`src/tools/handlers.js`](src/tools/handlers.js), validated with
+  zod, called by every platform — Vapi through one webhook (`/webhooks/vapi`), Retell and Bland
+  through one route per tool (`/functions/*`).
+- **Prompt**: shared core in [`agent/receptionistPrompt.js`](agent/receptionistPrompt.js); each
+  platform only adds its own date syntax and wrapper.
+- **Retell specifics**: Retell's native `retell-llm` (not a custom WebSocket LLM) — this
   keeps latency low because Retell owns the hot path (ASR → LLM → TTS streaming); our backend only
   handles the specific tool calls (check availability, book, search FAQ, etc).
 - **Conversation**: a 4-state machine (`greeting → faq_inquiry / qualify_and_book →
@@ -29,7 +37,22 @@ Original project spec: [REQUIREMENTS.md](REQUIREMENTS.md).
 Every external integration has a mock fallback **by design** — you can run and test the entire
 call flow today with zero paid accounts, then flip on real credentials one at a time.
 
-## Backup platform: Bland
+## Voice platforms
+
+### Vapi (in use)
+
+- [`vapi/assistant.js`](vapi/assistant.js) — the assistant: shared prompt, the same tool
+  definitions as `retell/tools.js` wrapped in Vapi's format, transfer + end-call tools, Deepgram
+  transcription, Vapi's own `Savannah` voice. Model and voice are overridable via `VAPI_*` in `.env`.
+- `npm run setup:vapi` creates the assistant (or updates it — the id is kept in
+  `vapi/.deployed-assistant.json`). Rerun it whenever the prompt, tools, `BASE_URL` or
+  `FUNCTIONS_SECRET` change.
+- [`src/routes/vapiWebhook.js`](src/routes/vapiWebhook.js) — receives tool calls
+  (`tool-calls`) and call events (`status-update`, `end-of-call-report`). The end-of-call report's
+  `performanceMetrics.turnLatencyAverage` is stored as the call's response latency on the dashboard.
+- Every request carries `x-functions-secret` (set as `server.headers` on the assistant and each tool).
+
+### Retell and Bland
 
 Both Retell and Bland put brand-new accounts on hold for manual anti-fraud verification before
 allowing live calls — this is industry-standard, not specific to either platform. Rather than
@@ -65,7 +88,9 @@ account clears, the same way `retell/setupAgent.js` tells you to for Retell.
 | FAQ RAG | Done, against Qdrant (keyword fallback) |
 | Lead capture → CRM | Done, against HubSpot (console fallback) |
 | SMS confirmation | Done, against Twilio (console fallback) |
-| Call logging + dashboard | Done, minimal (stats + call table) |
+| Call logging + dashboard | Done, minimal (stats + call table), behind a login, phone numbers masked |
+| Endpoint security | Done — shared secret on `/functions/*`, Retell webhook signature check, rate limiting, zod validation of every tool argument |
+| Automated tests | Done — `npm test` (node:test + supertest, mock mode), runs on every push via GitHub Actions |
 | Human transfer / escalation | Done, via Retell's native `transfer_call` tool |
 | HIPAA BAA | Retell offers self-serve BAA (click-agreements.retellai.com) — **you still need to sign it**, plus BAAs from any other vendor touching PHI |
 | Multi-location support | **Not built** — single clinic config only |
@@ -86,8 +111,16 @@ Fill in `.env`:
    sound, use an ElevenLabs Flash v2.5 or Cartesia Sonic voice.
 3. `BASE_URL` — a public URL Retell can reach. For local testing, run `ngrok http 3000` and paste
    the `https://...ngrok-free.app` URL here.
-4. Everything else (`CALCOM_*`, `HUBSPOT_API_KEY`, `TWILIO_*`, `OPENAI_API_KEY`) is optional — leave
+4. `FUNCTIONS_SECRET` — any long random string (`openssl rand -hex 32`). Retell sends it on every
+   tool call; anything calling `/functions/*` without it gets a 401. Rerun `npm run setup:agent`
+   whenever you change it.
+5. `DASHBOARD_PASSWORD` — the login for `/dashboard` (username `DASHBOARD_USER`, default `admin`).
+6. Everything else (`CALCOM_*`, `HUBSPOT_API_KEY`, `TWILIO_*`, `OPENAI_API_KEY`) is optional — leave
    blank to use mock mode.
+
+With `NODE_ENV=production`, a missing `FUNCTIONS_SECRET`, `DASHBOARD_PASSWORD` or `RETELL_API_KEY`
+locks that route instead of leaving it open. In development they're optional and the startup log
+warns about each one that's missing.
 
 Start the backend:
 ```bash
@@ -106,6 +139,18 @@ npm run setup:agent
 This is idempotent — it writes `retell/.deployed-agent.json` and reuses those IDs on the next run
 instead of creating duplicates.
 
+## Automated tests
+
+```bash
+npm test
+```
+Runs in well under a second with no network: every integration is forced into mock mode and the
+database is in memory (see `test/setup.js`), so it never touches the live keys in your `.env`. It
+covers auth on `/functions/*` and the dashboard, Retell webhook signatures, rate limiting,
+argument validation, the book → reschedule → cancel round trip, the 21-day availability lookahead
+and the FAQ keyword search. GitHub Actions runs the same suite on every push
+(`.github/workflows/test.yml`).
+
 ## How to test manually
 
 ### 1. Backend only, no Retell involved (fastest sanity check)
@@ -113,16 +158,28 @@ instead of creating duplicates.
 npm run dev                        # terminal 1
 bash scripts/testFunctionsLocally.sh   # terminal 2
 ```
-This hits every function endpoint directly with curl — availability, booking, reschedule, cancel,
+The script reads `FUNCTIONS_SECRET` and `DASHBOARD_PASSWORD` from `.env`. Set `BASE=http://localhost:<port>`
+if the server isn't on 3000. **If `.env` has live Cal.com/HubSpot keys, this creates real bookings
+and contacts** — blank them for a dry run. It hits every function endpoint directly with curl — availability, booking, reschedule, cancel,
 FAQ search, lead capture — and prints the JSON each one returns. Confirms the backend logic works
 before Retell is even in the loop. Check the terminal running `npm run dev` for `[crm:mock]` /
 `[sms:mock]` logs showing what would have been sent.
 
 ### 2. Dashboard
-Open `http://localhost:3000/dashboard` after step 1 — you should see the test call, the booking,
+Open `http://localhost:3000/dashboard` after step 1 and log in with `DASHBOARD_USER` /
+`DASHBOARD_PASSWORD` — you should see the test call, the booking,
 and conversion/escalation stats update live.
 
-### 3. Retell web test call (no phone number needed)
+### 3. Vapi browser test call (no phone number needed)
+1. Start the backend (`npm run dev`, port from `PORT` in `.env`) and the tunnel:
+   `ngrok http <PORT> --url=<your BASE_URL>`.
+2. `npm run setup:vapi` (only needed after changing the prompt, tools, `BASE_URL` or the secret).
+3. In [dashboard.vapi.ai](https://dashboard.vapi.ai) → Assistants → **Clinic Receptionist** →
+   **Talk to Assistant**. Use the same test script as the Retell section below.
+4. Afterwards: the call appears on `/dashboard`; Vapi's **Call Logs** show the transcript,
+   recording and per-turn latency.
+
+### 3b. Retell web test call (no phone number needed)
 1. Run `ngrok http 3000`, put that URL in `.env` as `BASE_URL`, restart `npm run dev`.
 2. `npm run setup:agent`.
 3. In the Retell dashboard, open the agent and click **Test Call** (browser-based, uses your
@@ -168,13 +225,15 @@ Add one real credential at a time to `.env`, restart, and re-run the relevant te
   phone numbers/names through them.
 - Keep the knowledge base to ranges and general info only (already the default) — never put a
   specific patient's health info into the KB or general prompt.
-- Get informed consent for call recording before go-live (this repo doesn't currently play a
-  recording-consent message — add one to `beginMessage` in `retell/prompt.js` if your state
-  requires it; several U.S. states are two-party consent).
+- Get informed consent for call recording before go-live. The agent's opening line
+  (`beginMessage` in `retell/prompt.js`) already says the call may be recorded; check that wording
+  meets your state's rules, since several U.S. states are two-party consent.
 
 ## Deploying
 
-This is a plain Node/Express app — deploy it anywhere that runs Node 18+ (Fly.io, Render, ECS/
+This is a plain Node/Express app — deploy it anywhere that runs Node 22.13+ (needed for the built-in
+`node:sqlite`) (Fly.io, Render, ECS/
 Fargate, EC2, etc). Point managed Redis (e.g. Upstash) and managed Qdrant (Qdrant Cloud) at it via
 `REDIS_URL` / `QDRANT_URL`, swap SQLite for RDS/Postgres if call volume grows, and set `BASE_URL`
-to your real domain before re-running `npm run setup:agent`.
+to your real domain before re-running `npm run setup:agent`. Set `NODE_ENV=production` along with
+`FUNCTIONS_SECRET`, `DASHBOARD_PASSWORD` and `RETELL_API_KEY` so every auth check fails closed.

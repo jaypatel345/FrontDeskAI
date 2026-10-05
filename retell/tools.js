@@ -2,8 +2,12 @@ import { config } from '../src/config.js';
 
 const base = config.baseUrl;
 
+// Sent on every tool call so the backend can reject anyone else hitting /functions/*.
+const headers = config.functionsSecret ? { 'x-functions-secret': config.functionsSecret } : {};
+
 export const searchKnowledgeBaseTool = {
   type: 'custom',
+  headers,
   name: 'search_knowledge_base',
   url: `${base}/functions/search-knowledge-base`,
   description:
@@ -24,6 +28,7 @@ export const searchKnowledgeBaseTool = {
 
 export const checkAvailabilityTool = {
   type: 'custom',
+  headers,
   name: 'check_availability',
   url: `${base}/functions/check-availability`,
   description:
@@ -46,6 +51,7 @@ export const checkAvailabilityTool = {
 
 export const bookAppointmentTool = {
   type: 'custom',
+  headers,
   name: 'book_appointment',
   url: `${base}/functions/book-appointment`,
   description:
@@ -69,6 +75,7 @@ export const bookAppointmentTool = {
 
 export const captureLeadTool = {
   type: 'custom',
+  headers,
   name: 'capture_lead',
   url: `${base}/functions/capture-lead`,
   description:
@@ -91,6 +98,7 @@ export const captureLeadTool = {
 
 export const lookupAppointmentTool = {
   type: 'custom',
+  headers,
   name: 'lookup_appointment',
   url: `${base}/functions/lookup-appointment`,
   description:
@@ -109,6 +117,7 @@ export const lookupAppointmentTool = {
 
 export const cancelAppointmentTool = {
   type: 'custom',
+  headers,
   name: 'cancel_appointment',
   url: `${base}/functions/cancel-appointment`,
   description: "Cancel the caller's existing upcoming appointment. Confirm out loud before calling this.",
@@ -128,6 +137,7 @@ export const cancelAppointmentTool = {
 
 export const rescheduleAppointmentTool = {
   type: 'custom',
+  headers,
   name: 'reschedule_appointment',
   url: `${base}/functions/reschedule-appointment`,
   description:
@@ -150,6 +160,7 @@ export const rescheduleAppointmentTool = {
 
 export const updateAppointmentDetailsTool = {
   type: 'custom',
+  headers,
   name: 'update_appointment_details',
   url: `${base}/functions/update-appointment-details`,
   description:

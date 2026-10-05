@@ -6,3 +6,4 @@ data/*.db-journal
 .DS_Store
 retell/.deployed-agent.json
 bland/.agent-config.json
+vapi/.deployed-assistant.json
