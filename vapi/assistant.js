@@ -92,6 +92,13 @@ export const assistant = {
   },
   voice: { provider: config.vapi.voiceProvider, voiceId: config.vapi.voiceId },
   transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
+  // Vapi's defaults (0.4s wait, 1.5s after an unpunctuated phrase) spent ~460ms per turn just
+  // deciding the caller had finished - the largest single slice of the ~2s response latency.
+  // Numbers keep a longer pause so a phone number read out in chunks isn't cut off.
+  startSpeakingPlan: {
+    waitSeconds: 0.2,
+    transcriptionEndpointingPlan: { onPunctuationSeconds: 0.1, onNoPunctuationSeconds: 1.0, onNumberSeconds: 0.6 },
+  },
   server: { url: serverUrl, headers, timeoutSeconds: 20 },
   serverMessages: ['status-update', 'end-of-call-report'],
   artifactPlan: { recordingEnabled: true },
