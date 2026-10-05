@@ -39,7 +39,8 @@ export const config = {
     phoneNumber: process.env.BLAND_PHONE_NUMBER || null,
   },
 
-  redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
+  // Optional: without it availability is cached in memory only (fine for a single instance).
+  redisUrl: process.env.REDIS_URL || null,
 
   qdrant: {
     url: process.env.QDRANT_URL || 'http://localhost:6333',
@@ -64,5 +65,8 @@ export const config = {
 
   humanTransferNumber: process.env.HUMAN_TRANSFER_NUMBER || '+15555550100',
   clinicTimezone: process.env.CLINIC_TIMEZONE || 'America/Los_Angeles',
+  // The demo build answers for a fictional clinic - see kb/clinicKnowledgeBase.json.
+  clinicName: process.env.CLINIC_NAME || 'Demo Aesthetics Clinic',
+  clinicLocation: process.env.CLINIC_LOCATION || 'Los Angeles, California',
   dbPath: process.env.DB_PATH || './data/clinic.db',
 };

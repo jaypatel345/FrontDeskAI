@@ -9,6 +9,7 @@ const env = {
   DASHBOARD_PASSWORD: 'test-dashboard-password',
   RETELL_API_KEY: 'test-retell-key',
   DB_PATH: ':memory:',
+  REDIS_URL: '',
   CALCOM_API_KEY: '',
   CALCOM_EVENT_TYPE_ID: '',
   HUBSPOT_API_KEY: '',

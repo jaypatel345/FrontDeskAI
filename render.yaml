@@ -1,0 +1,40 @@
+# Render Blueprint: Dashboard > New > Blueprint > pick this repo.
+# Values marked sync: false are asked for once when the Blueprint is created - copy them from
+# your local .env. FUNCTIONS_SECRET must match the one the Vapi assistant was set up with.
+services:
+  - type: web
+    name: frontdesk-ai
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CLINIC_NAME
+        value: Demo Aesthetics Clinic
+      - key: CLINIC_LOCATION
+        value: Los Angeles, California
+      - key: CLINIC_TIMEZONE
+        value: America/Los_Angeles
+      # The free plan has no persistent disk: the dashboard's call log starts empty after each
+      # restart or deploy. Bookings live in Cal.com and leads in HubSpot, so nothing real is lost.
+      - key: DB_PATH
+        value: ./data/clinic.db
+      - key: FUNCTIONS_SECRET
+        sync: false
+      - key: DASHBOARD_USER
+        value: admin
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: CALCOM_API_KEY
+        sync: false
+      - key: CALCOM_EVENT_TYPE_ID
+        sync: false
+      - key: HUBSPOT_API_KEY
+        sync: false
+      - key: HUMAN_TRANSFER_NUMBER
+        sync: false

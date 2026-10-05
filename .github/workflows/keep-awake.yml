@@ -1,0 +1,19 @@
+name: Keep Render awake
+
+# Render's free plan sleeps after 15 minutes without traffic, and waking takes longer than any
+# tool's timeout - the first call after a quiet spell would fail. Pinging /health every few
+# minutes keeps it awake. Set the repository variable RENDER_URL (Settings > Secrets and
+# variables > Actions > Variables), e.g. https://frontdesk-ai.onrender.com; without it this
+# workflow does nothing. Scheduled runs can be delayed a few minutes by GitHub, so the interval
+# stays well under 15.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: ${{ vars.RENDER_URL != '' }}
+    steps:
+      - run: curl --fail --silent --show-error --max-time 90 --retry 2 "${{ vars.RENDER_URL }}/health"

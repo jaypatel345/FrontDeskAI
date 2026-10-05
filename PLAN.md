@@ -56,11 +56,11 @@ Written 2026-10-04 after reading the README and `src/`.
 ## Phase 3 — Make it live (1 day, depends on Retell verification)
 
 - [ ] **G5** ~~Confirm Retell (or Bland) account is verified~~ Switched to **Vapi** (2026-10-05): assistant created via `npm run setup:vapi`, test with "Talk to Assistant" in the Vapi dashboard — needs no phone number
-- [ ] **G6** Deploy to Render (same as Newsbit): Node service + Upstash Redis + Qdrant Cloud free tier. Set `BASE_URL`, rerun `npm run setup:agent`
-- [ ] Persistent storage: SQLite on Render's disk is fine for a demo; note "Postgres before real volume" (already in README)
+- [ ] **G6** Deploy to Render **free plan** via `render.yaml` (Redis/Qdrant dropped — not needed). Set `BASE_URL`, rerun `npm run setup:vapi`, set `RENDER_URL` repo variable for keep-awake pings
+- [x] Persistent storage: free plan has no disk — dashboard log is ephemeral; evidence comes from Vapi call logs + Cal.com (documented in README)
 - [ ] Connect **real Cal.com** (a demo event type on your account) so bookings visibly land in a calendar
 - [ ] HubSpot + Twilio: real if free tiers allow, otherwise leave mock and say so on the site
-- [ ] **G8** Rename the KB clinic to an obviously fictional name ("Demo Aesthetics Clinic") so nobody mistakes it for a client
+- [x] **G8** Rename the KB clinic to an obviously fictional name ("Demo Aesthetics Clinic") so nobody mistakes it for a client — done; agent admits it's a demo if asked
 
 ## Phase 4 — Capture the evidence (½ day)
 

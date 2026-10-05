@@ -233,9 +233,26 @@ Add one real credential at a time to `.env`, restart, and re-run the relevant te
 
 ## Deploying
 
-This is a plain Node/Express app — deploy it anywhere that runs Node 22.13+ (needed for the built-in
-`node:sqlite`) (Fly.io, Render, ECS/
-Fargate, EC2, etc). Point managed Redis (e.g. Upstash) and managed Qdrant (Qdrant Cloud) at it via
-`REDIS_URL` / `QDRANT_URL`, swap SQLite for RDS/Postgres if call volume grows, and set `BASE_URL`
-to your real domain before re-running `npm run setup:agent`. Set `NODE_ENV=production` along with
-`FUNCTIONS_SECRET`, `DASHBOARD_PASSWORD` and `RETELL_API_KEY` so every auth check fails closed.
+### Render (free plan, via `render.yaml`)
+
+1. [render.com](https://render.com) → **New → Blueprint** → pick this repo. Render reads
+   [`render.yaml`](render.yaml) and asks for the `sync: false` values — copy them from your `.env`.
+   `FUNCTIONS_SECRET` **must be the same** as locally, because the Vapi assistant sends that value.
+2. Once it's live, point the assistant at it (run locally):
+   `BASE_URL=https://<your-service>.onrender.com npm run setup:vapi`
+3. Keep it awake: the free plan sleeps after 15 idle minutes and takes longer to wake than any
+   tool's timeout. Add a repository variable `RENDER_URL` (GitHub → Settings → Secrets and
+   variables → Actions → Variables) and [`keep-awake.yml`](.github/workflows/keep-awake.yml) pings
+   `/health` every 5 minutes.
+
+Free-plan limits: no persistent disk, so the dashboard's call log resets on each deploy or restart
+(bookings stay in Cal.com, leads in HubSpot, and call recordings/latency in Vapi's call logs). Redis
+and Qdrant aren't needed — availability is cached in memory, and without `OPENAI_API_KEY` the FAQ
+uses keyword search.
+
+### Anywhere else
+
+Any host running Node 22.13+ (needed for the built-in `node:sqlite`) works. Set `NODE_ENV=production`
+along with `FUNCTIONS_SECRET`, `DASHBOARD_PASSWORD` and `RETELL_API_KEY` (if using Retell) so every
+auth check fails closed. Add `REDIS_URL` for a shared cache across instances, and swap SQLite for
+Postgres if call volume grows.
