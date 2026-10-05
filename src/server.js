@@ -6,7 +6,7 @@ import { smsMode } from './services/sms.js';
 import { ragMode } from './services/rag.js';
 
 app.listen(config.port, () => {
-  console.log(`AI receptionist backend listening on :${config.port}`);
+  console.log(`FrontDesk AI backend listening on :${config.port}`);
   console.log(`  scheduling: ${schedulingMode}`);
   console.log(`  crm:        ${crmMode}`);
   console.log(`  sms:        ${smsMode}`);
