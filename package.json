@@ -1,9 +1,9 @@
 {
-  "name": "ai-clinic-receptionist",
+  "name": "frontdesk-ai",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Retell-powered AI receptionist for a cosmetic clinic: booking, FAQs, lead qualification.",
+  "description": "FrontDesk AI: a voice receptionist for clinics (Vapi, Retell or Bland) that answers FAQs, books, reschedules and cancels appointments, and captures leads.",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",

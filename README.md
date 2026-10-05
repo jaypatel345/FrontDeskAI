@@ -1,4 +1,6 @@
-# AI Clinic Receptionist (Vapi · Retell · Bland)
+# FrontDesk AI
+
+AI phone receptionist for clinics, running on Vapi (Retell and Bland also supported).
 
 Inbound AI receptionist for a U.S. cosmetic clinic: answers FAQs, qualifies leads, books /
 reschedules / cancels appointments, pushes to CRM, sends SMS confirmations, and logs every call.

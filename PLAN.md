@@ -1,4 +1,4 @@
-# AI Clinic Receptionist — Plan to make it the Voice AI case study
+# FrontDesk AI — Plan to make it the Voice AI case study
 
 Goal: make this the flagship **Voice AI** project on upperlayerstudio.com — a
 working phone receptionist a clinic owner can *hear*, with one result they can
