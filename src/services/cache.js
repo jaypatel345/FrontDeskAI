@@ -1,25 +1,29 @@
 import Redis from 'ioredis';
 import { config } from '../config.js';
 
-export const redis = new Redis(config.redisUrl, {
-  maxRetriesPerRequest: 1,
-  retryStrategy: () => 1000,
-  lazyConnect: false,
-  connectTimeout: 500,
-  // The local Docker Redis has been flapping (connect → ECONNRESET → reconnect, on a ~1s
-  // cycle) rather than staying stably up or cleanly down. With offline queueing on, a command
-  // issued mid-flap sits waiting instead of failing immediately - that queueing, not Cal.com,
-  // was the extra latency on top of the real external call. Fail fast instead and let the
-  // in-memory fallback below carry availability caching until Redis is actually stable.
-  enableOfflineQueue: false,
-});
+// Only created when REDIS_URL is set - otherwise a host without Redis would log a connection
+// error every second for nothing, since the in-memory cache below already covers it.
+export const redis = config.redisUrl
+  ? new Redis(config.redisUrl, {
+      maxRetriesPerRequest: 1,
+      retryStrategy: () => 1000,
+      lazyConnect: false,
+      connectTimeout: 500,
+      // The local Docker Redis has been flapping (connect → ECONNRESET → reconnect, on a ~1s
+      // cycle) rather than staying stably up or cleanly down. With offline queueing on, a command
+      // issued mid-flap sits waiting instead of failing immediately - that queueing, not Cal.com,
+      // was the extra latency on top of the real external call. Fail fast instead and let the
+      // in-memory fallback below carry availability caching until Redis is actually stable.
+      enableOfflineQueue: false,
+    })
+  : null;
 
-let redisUp = true;
-redis.on('error', (err) => {
+let redisUp = Boolean(redis);
+redis?.on('error', (err) => {
   if (redisUp) console.error('[redis] connection error (falling back to in-memory cache):', err.message);
   redisUp = false;
 });
-redis.on('connect', () => {
+redis?.on('connect', () => {
   if (!redisUp) console.log('[redis] reconnected');
   redisUp = true;
 });

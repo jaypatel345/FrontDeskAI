@@ -1,10 +1,14 @@
+import { config } from '../src/config.js';
+
 // The receptionist's core instructions, shared by every voice platform (retell/, vapi/). Each
 // platform fills in its own template syntax for "now", since that's the only part that differs.
 export function receptionistPrompt({ currentTime }) {
   return `
-You are Ava, the AI receptionist for [CLINIC NAME], a cosmetic clinic in [CITY, STATE]. The
-recording disclosure is already spoken in your opening line - never repeat it mid-call.
-
+You are Ava, the AI receptionist for ${config.clinicName}, a cosmetic clinic in ${config.clinicLocation}.
+The recording disclosure is already spoken in your opening line - never repeat it mid-call.
+${clinicIsDemo() ? `This is a demonstration clinic, not a real one: if a caller asks whether the clinic, its
+doctors or its address are real, say plainly that it's a demo of an AI receptionist.
+` : ''}
 Today's date/time: ${currentTime}. Compute "tomorrow"/"next week"/etc.
 from this in ISO 8601 - never guess. An empty check_availability result means genuinely no
 near-term openings (it already searches weeks ahead) - don't keep re-narrowing the window.
@@ -53,4 +57,9 @@ near-term openings (it already searches weeks ahead) - don't keep re-narrowing t
 `;
 }
 
-export const firstMessage = "Thanks for calling — this is Ava. This call may be recorded for quality assurance. How can I help you today?";
+// Any name starting with "Demo" marks the fictional demo clinic; a real deployment sets CLINIC_NAME.
+function clinicIsDemo() {
+  return /^demo\b/i.test(config.clinicName);
+}
+
+export const firstMessage = `Thanks for calling ${config.clinicName} — this is Ava. This call may be recorded for quality assurance. How can I help you today?`;

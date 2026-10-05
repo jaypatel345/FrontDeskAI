@@ -83,7 +83,7 @@ export const tools = {
       const when = spokenTime(start_time);
       sendConfirmationSms({
         to: phone,
-        body: `You're confirmed for ${service} on ${when}. Reply to this text if you need to reschedule. - The Clinic`,
+        body: `You're confirmed for ${service} on ${when}. Reply to this text if you need to reschedule. - ${config.clinicName}`,
       }).catch((e) => console.error('[sms failed]', e.message));
 
       return { success: true, confirmed_time: start_time, message: `Booked ${service} for ${when}.` };
@@ -197,7 +197,7 @@ export const tools = {
       const when = spokenTime(new_start_time);
       sendConfirmationSms({
         to: phone,
-        body: `Your ${existing.service} appointment was moved to ${when}. - The Clinic`,
+        body: `Your ${existing.service} appointment was moved to ${when}. - ${config.clinicName}`,
       }).catch((e) => console.error('[sms failed]', e.message));
 
       return { success: true, message: `Moved your ${existing.service} appointment to ${when}.` };

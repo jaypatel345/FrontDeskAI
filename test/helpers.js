@@ -7,7 +7,7 @@ import { redis } from '../src/services/cache.js';
 export { app };
 
 // The Redis client keeps retrying in the background and would stop the test process exiting.
-after(() => redis.disconnect());
+after(() => redis?.disconnect());
 
 // POST a tool call the way Retell sends it: { call, name, args } plus the shared-secret header.
 export function callTool(path, args, { callId = 'test-call', secret = process.env.FUNCTIONS_SECRET } = {}) {
