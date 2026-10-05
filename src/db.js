@@ -77,19 +77,21 @@ export function normalizePhone(phone) {
   return digits.slice(-10);
 }
 
+// Events for one call arrive from several places (tool calls, status updates, the end-of-call
+// report) in no guaranteed order, so a missing value never overwrites one already stored.
 const upsertCallStmt = db.prepare(`
   INSERT INTO calls (call_id, agent_id, from_number, to_number, status, started_at, ended_at, disconnection_reason, transcript, recording_url, intent, escalated, avg_response_latency_ms)
   VALUES (:call_id, :agent_id, :from_number, :to_number, :status, :started_at, :ended_at, :disconnection_reason, :transcript, :recording_url, :intent, :escalated, :avg_response_latency_ms)
   ON CONFLICT(call_id) DO UPDATE SET
-    agent_id=excluded.agent_id,
-    from_number=excluded.from_number,
-    to_number=excluded.to_number,
+    agent_id=COALESCE(excluded.agent_id, calls.agent_id),
+    from_number=COALESCE(excluded.from_number, calls.from_number),
+    to_number=COALESCE(excluded.to_number, calls.to_number),
     status=excluded.status,
     started_at=COALESCE(calls.started_at, excluded.started_at),
-    ended_at=excluded.ended_at,
-    disconnection_reason=excluded.disconnection_reason,
-    transcript=excluded.transcript,
-    recording_url=excluded.recording_url,
+    ended_at=COALESCE(excluded.ended_at, calls.ended_at),
+    disconnection_reason=COALESCE(excluded.disconnection_reason, calls.disconnection_reason),
+    transcript=COALESCE(excluded.transcript, calls.transcript),
+    recording_url=COALESCE(excluded.recording_url, calls.recording_url),
     intent=COALESCE(excluded.intent, calls.intent),
     escalated=MAX(calls.escalated, excluded.escalated),
     avg_response_latency_ms=COALESCE(excluded.avg_response_latency_ms, calls.avg_response_latency_ms)

@@ -1,35 +1,9 @@
-import express from 'express';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { app } from './app.js';
 import { config } from './config.js';
-import { functionsRouter } from './routes/functions.js';
-import { retellWebhookRouter } from './routes/retellWebhook.js';
-import { blandWebhookRouter } from './routes/blandWebhook.js';
-import { dashboardRouter } from './routes/dashboard.js';
 import { schedulingMode } from './services/scheduling.js';
 import { crmMode } from './services/crm.js';
 import { smsMode } from './services/sms.js';
 import { ragMode } from './services/rag.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const app = express();
-
-app.use(
-  express.json({
-    verify: (req, res, buf) => {
-      req.rawBody = buf;
-    },
-  })
-);
-
-app.get('/health', (req, res) => res.json({ ok: true }));
-
-app.use('/functions', functionsRouter);
-app.use('/webhooks/retell', retellWebhookRouter);
-app.use('/webhooks/bland', blandWebhookRouter);
-app.use('/api/dashboard', dashboardRouter);
-app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
-app.use('/dashboard', express.static(path.join(__dirname, 'public')));
 
 app.listen(config.port, () => {
   console.log(`AI receptionist backend listening on :${config.port}`);
@@ -38,4 +12,15 @@ app.listen(config.port, () => {
   console.log(`  sms:        ${smsMode}`);
   console.log(`  rag:        ${ragMode}`);
   console.log(`  dashboard:  http://localhost:${config.port}/dashboard`);
+
+  // Each of these fails closed in production, so a missing value means that route is locked, not open.
+  const warn = (name, what) =>
+    console.warn(
+      config.isProduction
+        ? `  WARNING: ${name} is not set - ${what} will reject every request.`
+        : `  WARNING: ${name} is not set - ${what} is open (dev only).`
+    );
+  if (!config.functionsSecret) warn('FUNCTIONS_SECRET', '/functions/*');
+  if (!config.dashboard.password) warn('DASHBOARD_PASSWORD', '/dashboard');
+  if (!config.retell.apiKey) warn('RETELL_API_KEY', 'the Retell webhook signature check');
 });

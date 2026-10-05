@@ -80,20 +80,46 @@ export async function cancelBooking({ externalBookingId, reason }) {
   return { status: 'cancelled' };
 }
 
+// Mock slots are clinic wall-clock times (9am, 11am, 2pm, 4pm in CLINIC_TIMEZONE) - building them
+// with the server's own local time made them come out at e.g. 1:30 AM clinic time on a server in
+// another time zone. Slots already in the past are skipped, same as a real calendar would.
 function mockSlots(dateFrom) {
-  const base = new Date(dateFrom || Date.now());
-  base.setHours(9, 0, 0, 0);
+  const tz = config.clinicTimezone;
+  const from = Math.max(Date.parse(dateFrom) || Date.now(), Date.now());
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(from)
+    .split('-')
+    .map(Number);
+
   const slots = [];
-  for (let day = 0; day < 3; day++) {
+  for (let day = 0; slots.length < 6 && day < 14; day++) {
+    const weekday = new Date(Date.UTC(y, m - 1, d + day)).getUTCDay();
+    if (weekday === 0 || weekday === 6) continue; // skip weekends
     for (const hour of [9, 11, 14, 16]) {
-      const d = new Date(base);
-      d.setDate(d.getDate() + day);
-      d.setHours(hour, 0, 0, 0);
-      if (d.getDay() === 0 || d.getDay() === 6) continue; // skip weekends
-      slots.push({ start: d.toISOString() });
+      const start = clinicTimeToUtc(y, m - 1, d + day, hour, tz);
+      if (start > from) slots.push({ start: new Date(start).toISOString() });
     }
   }
   return slots.slice(0, 6);
+}
+
+// UTC ms for a wall-clock time in `tz`. Done twice so a DST change between the guess and the
+// real instant still lands on the right hour.
+function clinicTimeToUtc(year, monthIndex, day, hour, tz) {
+  const wallClockAsUtc = Date.UTC(year, monthIndex, day, hour);
+  let utc = wallClockAsUtc;
+  for (let i = 0; i < 2; i++) utc = wallClockAsUtc - tzOffsetMs(utc, tz);
+  return utc;
+}
+
+function tzOffsetMs(utcMs, tz) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' })
+      .formatToParts(utcMs)
+      .map((p) => [p.type, Number(p.value)])
+  );
+  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return asUtc - Math.floor(utcMs / 1000) * 1000;
 }
 
 export const schedulingMode = isLive ? 'cal.com (live)' : 'mock (no CALCOM_API_KEY set)';
