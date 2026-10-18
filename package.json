@@ -19,9 +19,9 @@
     "setup:retell:all": "node retell/setupAgent.js all",
     "setup:bland-agent": "node bland/setupAgent.js",
     "seed:kb": "node kb/seed.js",
+    "switch:phone": "node scripts/switchPhone.js",
     "setup:hubspot": "node scripts/setupHubspotProperties.js",
     "test": "node --test \"test/**/*.test.js\""
-
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.11.0",
