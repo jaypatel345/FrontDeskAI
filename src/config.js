@@ -29,8 +29,8 @@ export const config = {
     assistantName: process.env.VAPI_ASSISTANT_NAME || 'Clinic Receptionist',
     modelProvider: process.env.VAPI_MODEL_PROVIDER || 'openai',
     model: process.env.VAPI_MODEL || 'gpt-4.1-mini',
-    voiceProvider: process.env.VAPI_VOICE_PROVIDER || 'vapi',
-    voiceId: process.env.VAPI_VOICE_ID || 'Savannah',
+    voiceProvider: process.env.VAPI_VOICE_PROVIDER || 'cartesia',
+    voiceId: process.env.VAPI_VOICE_ID || '248be419-c632-4f23-adf1-5324ed7dbf1d',
   },
 
   bland: {
@@ -69,4 +69,46 @@ export const config = {
   clinicName: process.env.CLINIC_NAME || 'Demo Aesthetics Clinic',
   clinicLocation: process.env.CLINIC_LOCATION || 'Los Angeles, California',
   dbPath: process.env.DB_PATH || './data/clinic.db',
+
+  defaultIndustry: process.env.DEFAULT_INDUSTRY || 'clinic',
+  industries: {
+    clinic: {
+      id: 'clinic',
+      name: process.env.CLINIC_NAME || 'Demo Aesthetics Clinic',
+      location: process.env.CLINIC_LOCATION || 'Los Angeles, California',
+      timezone: process.env.CLINIC_TIMEZONE || 'America/Los_Angeles',
+      personaName: process.env.CLINIC_PERSONA_NAME || 'Ava',
+      phoneNumber: process.env.CLINIC_PHONE_NUMBER || null,
+      vapiAssistantId: process.env.CLINIC_VAPI_ASSISTANT_ID || null,
+      retellAgentId: process.env.CLINIC_RETELL_AGENT_ID || null,
+    },
+    'real-estate': {
+      id: 'real-estate',
+      name: process.env.REAL_ESTATE_NAME || 'Apex Realty Group',
+      location: process.env.REAL_ESTATE_LOCATION || 'Greater Metro Area',
+      timezone: process.env.REAL_ESTATE_TIMEZONE || 'America/Los_Angeles',
+      personaName: process.env.REAL_ESTATE_PERSONA_NAME || 'Marcus',
+      phoneNumber: process.env.REAL_ESTATE_PHONE_NUMBER || null,
+      vapiAssistantId: process.env.REAL_ESTATE_VAPI_ASSISTANT_ID || null,
+      retellAgentId: process.env.REAL_ESTATE_RETELL_AGENT_ID || null,
+    },
+    'general-business': {
+      id: 'general-business',
+      name: process.env.GENERAL_BUSINESS_NAME || 'Vanguard Enterprise Solutions',
+      location: process.env.GENERAL_BUSINESS_LOCATION || 'Corporate Headquarters',
+      timezone: process.env.GENERAL_BUSINESS_TIMEZONE || 'America/Los_Angeles',
+      personaName: process.env.GENERAL_BUSINESS_PERSONA_NAME || 'Jordan',
+      phoneNumber: process.env.GENERAL_BUSINESS_PHONE_NUMBER || null,
+      vapiAssistantId: process.env.GENERAL_BUSINESS_VAPI_ASSISTANT_ID || null,
+      retellAgentId: process.env.GENERAL_BUSINESS_RETELL_AGENT_ID || null,
+    },
+  },
+  industryPhoneMap: (() => {
+    try {
+      return process.env.INDUSTRY_PHONE_MAP ? JSON.parse(process.env.INDUSTRY_PHONE_MAP) : {};
+    } catch {
+      return {};
+    }
+  })(),
 };
+

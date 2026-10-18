@@ -21,7 +21,7 @@ export function isValidRetellSignature(rawBody, signature, apiKey, now = Date.no
   return crypto.timingSafeEqual(expected, given);
 }
 
-retellWebhookRouter.post('/', (req, res) => {
+retellWebhookRouter.post('/:industry?', (req, res) => {
   // Anyone who knows this URL could otherwise write fake calls into the dashboard. In production
   // an unverifiable request is rejected; in dev it's logged and processed so local testing with
   // hand-written payloads still works.

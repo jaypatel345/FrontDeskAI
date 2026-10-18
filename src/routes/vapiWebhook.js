@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { runTool } from '../tools/handlers.js';
 import { upsertCall } from '../db.js';
 import { logCallToCrm } from '../services/crm.js';
+import { getIndustry } from '../industries/registry.js';
 
 // Vapi sends everything to one server URL as { message: { type, call, ... } } - tool calls and
 // call lifecycle events alike (https://docs.vapi.ai/server-url/events). Auth is the same
@@ -22,7 +23,16 @@ export function normaliseEndedReason(reason) {
   return reason;
 }
 
-function baseCallRow(call) {
+function resolveVapiIndustry(req, message) {
+  const context = {
+    industry: req.params?.industry || req.query?.industry || req.headers?.['x-industry'],
+    toNumber: message?.call?.phoneNumber?.number,
+    assistantId: message?.call?.assistantId,
+  };
+  return getIndustry(context);
+}
+
+function baseCallRow(call, industryId = 'clinic') {
   return {
     call_id: call.id,
     agent_id: call.assistantId || null,
@@ -33,7 +43,7 @@ function baseCallRow(call) {
   };
 }
 
-async function handleToolCalls(message) {
+async function handleToolCalls(message, industryKey = 'clinic') {
   const callId = message.call?.id ?? null;
   const results = await Promise.all(
     (message.toolCallList || []).map(async (toolCall) => {
@@ -46,7 +56,7 @@ async function handleToolCalls(message) {
           args = {};
         }
       }
-      const output = await runTool(name, args, { callId });
+      const output = await runTool(name, args, { callId, industryKey });
       // Vapi wants `result` as a single-line string; the model reads the JSON just fine.
       return { name, toolCallId: toolCall.id, result: JSON.stringify(output) };
     })
@@ -54,11 +64,11 @@ async function handleToolCalls(message) {
   return { results };
 }
 
-function handleStatusUpdate(message) {
+function handleStatusUpdate(message, industryKey = 'clinic') {
   const { call, status } = message;
   if (!call?.id) return;
   upsertCall({
-    ...baseCallRow(call),
+    ...baseCallRow(call, industryKey),
     status: status === 'in-progress' ? 'in_progress' : status,
     ended_at: status === 'ended' ? Date.now() : null,
     disconnection_reason: normaliseEndedReason(message.endedReason ?? call.endedReason),
@@ -68,7 +78,7 @@ function handleStatusUpdate(message) {
   });
 }
 
-function handleEndOfCallReport(message) {
+function handleEndOfCallReport(message, industryKey = 'clinic') {
   const { call, artifact = {} } = message;
   if (!call?.id) return;
   const disconnection = normaliseEndedReason(message.endedReason ?? call.endedReason);
@@ -78,7 +88,7 @@ function handleEndOfCallReport(message) {
   const latency = artifact.performanceMetrics?.turnLatencyAverage;
 
   upsertCall({
-    ...baseCallRow(call),
+    ...baseCallRow(call, industryKey),
     status: 'ended',
     ended_at: call.endedAt ? Date.parse(call.endedAt) : Date.now(),
     disconnection_reason: disconnection,
@@ -102,17 +112,19 @@ function handleEndOfCallReport(message) {
   }).catch((e) => console.error('[crm call log failed]', e.response?.data?.message || e.message));
 }
 
-vapiWebhookRouter.post('/', async (req, res) => {
+async function processVapiWebhook(req, res) {
   const message = req.body?.message;
+  const industry = resolveVapiIndustry(req, message);
+
   switch (message?.type) {
     case 'tool-calls':
-      return res.json(await handleToolCalls(message));
+      return res.json(await handleToolCalls(message, industry.id));
     case 'status-update':
-      handleStatusUpdate(message);
+      handleStatusUpdate(message, industry.id);
       break;
     case 'end-of-call-report':
-      handleEndOfCallReport(message);
-      console.log(`[vapi-webhook] end-of-call-report for call ${message.call?.id}`);
+      handleEndOfCallReport(message, industry.id);
+      console.log(`[vapi-webhook] end-of-call-report for call ${message.call?.id} (${industry.id})`);
       break;
     default:
       // Other event types (speech-update, conversation-update, ...) aren't subscribed to, but
@@ -120,4 +132,8 @@ vapiWebhookRouter.post('/', async (req, res) => {
       break;
   }
   res.json({});
-});
+}
+
+vapiWebhookRouter.post('/', processVapiWebhook);
+vapiWebhookRouter.post('/:industry', processVapiWebhook);
+

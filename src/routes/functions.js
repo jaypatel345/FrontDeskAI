@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { runTool } from '../tools/handlers.js';
+import { getIndustry } from '../industries/registry.js';
 
 export { searchWindowEnd } from '../tools/handlers.js';
 
@@ -15,6 +16,18 @@ function extractCallId(req) {
   return req.body?.call?.call_id ?? req.body?.call_id ?? null;
 }
 
+function resolveIndustry(req) {
+  const industryFromReq =
+    req.params?.industry ||
+    req.query?.industry ||
+    req.headers?.['x-industry'] ||
+    req.body?.industry ||
+    req.body?.call?.industry ||
+    req.body?.call?.to_number ||
+    req.body?.call?.phoneNumber?.number;
+  return getIndustry(industryFromReq);
+}
+
 const ROUTES = {
   'check-availability': 'check_availability',
   'book-appointment': 'book_appointment',
@@ -26,8 +39,19 @@ const ROUTES = {
   'update-appointment-details': 'update_appointment_details',
 };
 
+// Handle standard paths /functions/:path
 for (const [path, toolName] of Object.entries(ROUTES)) {
   functionsRouter.post(`/${path}`, async (req, res) => {
-    res.json(await runTool(toolName, extractArgs(req), { callId: extractCallId(req) }));
+    const industry = resolveIndustry(req);
+    res.json(await runTool(toolName, extractArgs(req), { callId: extractCallId(req), industryKey: industry.id }));
   });
 }
+
+// Handle explicit industry paths /functions/:industry/:path
+for (const [path, toolName] of Object.entries(ROUTES)) {
+  functionsRouter.post(`/:industry/${path}`, async (req, res) => {
+    const industry = resolveIndustry(req);
+    res.json(await runTool(toolName, extractArgs(req), { callId: extractCallId(req), industryKey: industry.id }));
+  });
+}
+

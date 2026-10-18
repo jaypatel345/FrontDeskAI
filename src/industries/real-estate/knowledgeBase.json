@@ -1,0 +1,57 @@
+[
+  {
+    "id": "hours-location",
+    "category": "logistics",
+    "text": "Apex Realty Group office is open Monday to Friday 8:30am-6:30pm and Saturday 9:00am-5:00pm, Sunday by appointment. We service the entire Greater Metro area, including downtown, northern suburbs, and coastal neighborhoods. This is an interactive demo of our AI Real Estate Receptionist."
+  },
+  {
+    "id": "listing-evergreen",
+    "category": "listings",
+    "text": "742 Evergreen Terrace: Beautiful 3-bedroom, 2.5-bathroom single-family suburban home with 2,200 sq ft, upgraded quartz kitchen, private landscaped backyard, and 2-car garage. Listed at $650,000. Private tours can be booked daily, and an open house is held every Saturday 1-4 PM."
+  },
+  {
+    "id": "listing-grand-loft",
+    "category": "listings",
+    "text": "1204 Grand Avenue, Unit 8B: Modern downtown luxury loft featuring 2 bedrooms, 2 bathrooms, 1,400 sq ft, 11-foot exposed ceilings, floor-to-ceiling windows with skyline views, and deeded underground parking. Listed at $440,000 with low $320 monthly HOA."
+  },
+  {
+    "id": "listing-ocean-pointe",
+    "category": "listings",
+    "text": "88 Ocean Pointe Drive: Premium coastal 4-bedroom, 3.5-bath estate with 3,600 sq ft, private boat slip, heated pool, chef's kitchen, and expansive master suite balcony. Listed at $1,250,000. Verified pre-approval or proof of funds requested prior to private showings."
+  },
+  {
+    "id": "listing-maple-rental",
+    "category": "rentals",
+    "text": "450 Maple Court, Unit 3: Spacious 2-bedroom, 1-bath rental apartment, newly renovated with stainless appliances, in-unit washer/dryer, and pet friendly. Rent is $2,400 per month, 1-year lease minimum, available for immediate move-in."
+  },
+  {
+    "id": "buyer-services",
+    "category": "services",
+    "text": "For buyers, our agents provide complete end-to-end guidance: personalized MLS search portals with instant off-market alerts, neighborhood valuation reports, private showing coordination, offer negotiation, and escrow coordination. Buyer representation is typically at zero direct cost to the buyer."
+  },
+  {
+    "id": "seller-valuation",
+    "category": "services",
+    "text": "For homeowners looking to sell, we provide a complimentary, no-obligation Comparative Market Analysis (CMA) and home valuation report. Listing packages include professional HDR photography, drone footage, 3D Matterport virtual tours, social media campaigns, and staging consultation."
+  },
+  {
+    "id": "commission-rates",
+    "category": "pricing",
+    "text": "Our standard full-service listing commission is competitive at 2.5% to 5% total split, with flexible tiered marketing plans tailored to each property's price point and seller timeline."
+  },
+  {
+    "id": "agents-staff",
+    "category": "staff",
+    "text": "Our lead agents include Marcus Vance, Senior Broker and Residential Specialist with 14 years of metro real estate experience, and Elena Rostova, Luxury Property Specialist and Investment Advisor with 9 years of experience. Both take direct buyer and seller consultations."
+  },
+  {
+    "id": "financing-preapproval",
+    "category": "financing",
+    "text": "We partner with top-rated local mortgage lenders who can issue verified conventional, FHA, VA, and jumbo loan pre-approvals in under 24 hours. Pre-approval clarifies your buying power and makes offers significantly stronger."
+  },
+  {
+    "id": "showing-policy",
+    "category": "policy",
+    "text": "Private showings can be scheduled any day between 9:00 AM and 7:00 PM with at least 2 hours advance notice. We verify the buyer's contact details and email before locking in the showing appointment."
+  }
+]

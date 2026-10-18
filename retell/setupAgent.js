@@ -1,10 +1,9 @@
 import fs from 'node:fs';
 import axios from 'axios';
 import { config } from '../src/config.js';
-import { generalPrompt, states, startingState, beginMessage } from './prompt.js';
+import { generalPrompt, states, startingState, beginMessage, getRetellPayload } from './prompt.js';
 import { generalTools } from './tools.js';
-
-const STATE_FILE = new URL('./.deployed-agent.json', import.meta.url);
+import { listIndustryIds, normalizeIndustryKey } from '../src/industries/registry.js';
 
 if (!config.retell.apiKey) {
   console.error('RETELL_API_KEY is not set in .env — get it from the Retell dashboard first.');
@@ -23,39 +22,57 @@ const http = axios.create({
   headers: { Authorization: `Bearer ${config.retell.apiKey}`, 'Content-Type': 'application/json' },
 });
 
-const llmPayload = {
-  model: config.retell.llmModel,
-  general_prompt: generalPrompt,
-  general_tools: generalTools,
-  states,
-  starting_state: startingState,
-  start_speaker: 'agent',
-  begin_message: beginMessage,
-};
+function getStateFile(industryKey) {
+  return industryKey === 'clinic'
+    ? new URL('./.deployed-agent.json', import.meta.url)
+    : new URL(`./.deployed-agent-${industryKey}.json`, import.meta.url);
+}
 
-const agentPayload = {
-  agent_name: config.retell.agentName,
-  voice_id: config.retell.voiceId,
-  voice_speed: 0.95,
-  voice_temperature: 1.15,
-  // Backchanneling ("mm-hmm", "I see") while the caller is talking, a touch of pitch/pacing
-  // variation (voice_temperature above the 1.0 default), and a faint office ambience are what
-  // separate a natural-sounding agent from a flat TTS read - none of this is prompt-controllable,
-  // it's all agent-level config Retell exposes for exactly this ask.
-  enable_backchannel: true,
-  backchannel_frequency: 0.8,
-  backchannel_words: ['mm-hmm', 'I see', 'got it'],
-  ambient_sound: 'call-center',
-  ambient_sound_volume: 0.3,
-  language: 'en-US',
-  webhook_url: `${config.baseUrl}/webhooks/retell`,
-  webhook_events: ['call_started', 'call_ended', 'call_analyzed'],
-  interruption_sensitivity: 1,
-  max_call_duration_ms: 15 * 60 * 1000,
-};
+function buildAgentPayload(agentName, industryKey) {
+  return {
+    agent_name: agentName,
+    voice_id: config.retell.voiceId,
+    voice_speed: 0.95,
+    voice_temperature: 1.15,
+    enable_backchannel: true,
+    backchannel_frequency: 0.8,
+    backchannel_words: ['mm-hmm', 'I see', 'got it'],
+    ambient_sound: 'call-center',
+    ambient_sound_volume: 0.3,
+    language: 'en-US',
+    webhook_url: `${config.baseUrl}/webhooks/retell/${industryKey}`,
+    webhook_events: ['call_started', 'call_ended', 'call_analyzed'],
+    interruption_sensitivity: 1,
+    max_call_duration_ms: 15 * 60 * 1000,
+  };
+}
 
-async function main() {
-  const existing = fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')) : null;
+async function setupSingleAgent(industryKey) {
+  const stateFile = getStateFile(industryKey);
+  const existing = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf-8')) : null;
+
+  let llmPayload;
+  let agentName;
+  if (industryKey === 'clinic') {
+    llmPayload = {
+      model: config.retell.llmModel,
+      general_prompt: generalPrompt,
+      general_tools: generalTools,
+      states,
+      starting_state: startingState,
+      start_speaker: 'agent',
+      begin_message: beginMessage,
+    };
+    agentName = config.retell.agentName;
+  } else {
+    const payloadInfo = getRetellPayload(industryKey);
+    llmPayload = payloadInfo.llmPayload;
+    agentName = payloadInfo.agentName;
+  }
+
+  const agentPayload = buildAgentPayload(agentName, industryKey);
+
+  console.log(`\n--- Setting up Retell Agent for [${industryKey}]: "${agentName}" ---`);
 
   let llmId;
   if (existing?.llm_id) {
@@ -80,17 +97,35 @@ async function main() {
     console.log(`Created agent ${agentId}`);
   }
 
-  fs.writeFileSync(STATE_FILE, JSON.stringify({ llm_id: llmId, agent_id: agentId }, null, 2));
-  console.log('\nDone. In the Retell dashboard:');
-  console.log(`  - Open Agent ${agentId} and use "Test Call" (web call) to try it with zero phone setup.`);
-  console.log('  - Attach a phone number to this agent under Phone Numbers when ready for real calls.');
+  fs.writeFileSync(stateFile, JSON.stringify({ llm_id: llmId, agent_id: agentId, industry: industryKey }, null, 2));
+  console.log(`Done. Agent ID: ${agentId}`);
+  return agentId;
+}
+
+async function main() {
+  const rawArg = process.argv[2] ? process.argv[2].replace(/^--industry=/, '').trim().toLowerCase() : null;
+
+  if (rawArg === 'all') {
+    for (const key of listIndustryIds()) {
+      await setupSingleAgent(key);
+    }
+  } else if (rawArg) {
+    const norm = normalizeIndustryKey(rawArg);
+    if (!norm) {
+      console.error(`Unknown industry "${rawArg}". Available: ${listIndustryIds().join(', ')}, all`);
+      process.exit(1);
+    }
+    await setupSingleAgent(norm);
+  } else {
+    // Default to clinic
+    await setupSingleAgent('clinic');
+  }
+
+  console.log('\nAll done.');
 }
 
 main().catch((err) => {
   console.error('Setup failed:', err.response?.data || err.message);
-  console.error('\nIf field names have drifted from what this script expects, check the current');
-  console.error('schema at https://docs.retellai.com/api-references/create-retell-llm and');
-  console.error('https://docs.retellai.com/api-references/create-agent, or configure the agent');
-  console.error('directly in the dashboard using retell/prompt.js and retell/tools.js as the source of truth.');
   process.exit(1);
 });
+

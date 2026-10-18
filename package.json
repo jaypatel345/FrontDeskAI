@@ -8,11 +8,20 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "setup:vapi": "node vapi/setupAssistant.js",
+    "setup:vapi:clinic": "node vapi/setupAssistant.js clinic",
+    "setup:vapi:real-estate": "node vapi/setupAssistant.js real-estate",
+    "setup:vapi:general": "node vapi/setupAssistant.js general-business",
+    "setup:vapi:all": "node vapi/setupAssistant.js all",
     "setup:agent": "node retell/setupAgent.js",
+    "setup:retell:clinic": "node retell/setupAgent.js clinic",
+    "setup:retell:real-estate": "node retell/setupAgent.js real-estate",
+    "setup:retell:general": "node retell/setupAgent.js general-business",
+    "setup:retell:all": "node retell/setupAgent.js all",
     "setup:bland-agent": "node bland/setupAgent.js",
     "seed:kb": "node kb/seed.js",
     "setup:hubspot": "node scripts/setupHubspotProperties.js",
     "test": "node --test \"test/**/*.test.js\""
+
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.11.0",

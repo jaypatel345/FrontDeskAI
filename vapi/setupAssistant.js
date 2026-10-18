@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import axios from 'axios';
 import { config } from '../src/config.js';
-import { assistant } from './assistant.js';
-
-const STATE_FILE = new URL('./.deployed-assistant.json', import.meta.url);
+import { getVapiAssistant, assistant as defaultAssistant } from './assistant.js';
+import { listIndustryIds, normalizeIndustryKey } from '../src/industries/registry.js';
 
 if (!config.vapi.privateKey) {
   console.error('VAPI_PRIVATE_KEY is not set in .env — copy the private key from the Vapi dashboard (Organization > API Keys).');
@@ -21,31 +20,59 @@ const http = axios.create({
   headers: { Authorization: `Bearer ${config.vapi.privateKey}`, 'Content-Type': 'application/json' },
 });
 
-async function main() {
-  const existing = fs.existsSync(STATE_FILE) ? JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')) : null;
+function getStateFile(industryKey) {
+  return industryKey === 'clinic'
+    ? new URL('./.deployed-assistant.json', import.meta.url)
+    : new URL(`./.deployed-assistant-${industryKey}.json`, import.meta.url);
+}
 
-  // Idempotent like retell/setupAgent.js: update the assistant created last time instead of
-  // making a duplicate on every run.
+async function setupSingleAssistant(industryKey) {
+  const assistantPayload = industryKey === 'clinic' ? defaultAssistant : getVapiAssistant(industryKey);
+  const stateFile = getStateFile(industryKey);
+  const existing = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf-8')) : null;
+
+  console.log(`\n--- Setting up Vapi Assistant for [${industryKey}]: "${assistantPayload.name}" ---`);
   let assistantId;
   if (existing?.assistant_id) {
-    await http.patch(`/assistant/${existing.assistant_id}`, assistant);
+    await http.patch(`/assistant/${existing.assistant_id}`, assistantPayload);
     assistantId = existing.assistant_id;
     console.log(`Updated existing assistant ${assistantId}`);
   } else {
-    const res = await http.post('/assistant', assistant);
+    const res = await http.post('/assistant', assistantPayload);
     assistantId = res.data.id;
     console.log(`Created assistant ${assistantId}`);
   }
 
-  fs.writeFileSync(STATE_FILE, JSON.stringify({ assistant_id: assistantId }, null, 2));
-  console.log(`\nTools and call events go to: ${config.baseUrl}/webhooks/vapi`);
-  console.log('\nDone. In the Vapi dashboard (dashboard.vapi.ai > Assistants):');
-  console.log(`  - Open "${assistant.name}" and press "Talk to Assistant" for a browser test call - no phone number needed.`);
-  console.log('  - Call logs (transcript, recording, latency per turn) are under Observe > Call Logs.');
+  fs.writeFileSync(stateFile, JSON.stringify({ assistant_id: assistantId, industry: industryKey }, null, 2));
+  console.log(`Tools and call events go to: ${config.baseUrl}/webhooks/vapi/${industryKey}`);
+  console.log(`Open "${assistantPayload.name}" in Vapi dashboard to test!`);
+  return assistantId;
+}
+
+async function main() {
+  const rawArg = process.argv[2] ? process.argv[2].replace(/^--industry=/, '').trim().toLowerCase() : null;
+
+  if (rawArg === 'all') {
+    for (const key of listIndustryIds()) {
+      await setupSingleAssistant(key);
+    }
+  } else if (rawArg) {
+    const norm = normalizeIndustryKey(rawArg);
+    if (!norm) {
+      console.error(`Unknown industry "${rawArg}". Available: ${listIndustryIds().join(', ')}, all`);
+      process.exit(1);
+    }
+    await setupSingleAssistant(norm);
+  } else {
+    // Default to clinic for backward compatibility
+    await setupSingleAssistant('clinic');
+  }
+
+  console.log('\nAll done.');
 }
 
 main().catch((err) => {
   console.error('Setup failed:', JSON.stringify(err.response?.data ?? err.message, null, 2));
-  console.error('\nIf a field name has drifted, check https://docs.vapi.ai/api-reference/assistants/create');
   process.exit(1);
 });
+

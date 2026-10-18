@@ -1,5 +1,6 @@
 import { config } from '../src/config.js';
 import { receptionistPrompt, firstMessage } from '../agent/receptionistPrompt.js';
+import { getIndustry } from '../src/industries/registry.js';
 import {
   searchKnowledgeBaseTool,
   checkAvailabilityTool,
@@ -12,12 +13,12 @@ import {
 } from '../retell/tools.js';
 
 // Vapi posts every tool call and call event to this one URL (see src/routes/vapiWebhook.js).
-const serverUrl = `${config.baseUrl}/webhooks/vapi`;
+const defaultServerUrl = `${config.baseUrl}/webhooks/vapi`;
 const headers = config.functionsSecret ? { 'x-functions-secret': config.functionsSecret } : {};
 
 // Tool names, descriptions and argument schemas are the ones in retell/tools.js, so both
 // platforms give the model identical instructions; only the wrapper differs.
-function toVapiTool(retellTool) {
+function toVapiTool(retellTool, serverUrl = defaultServerUrl) {
   return {
     type: 'function',
     function: {
@@ -33,43 +34,102 @@ function toVapiTool(retellTool) {
   };
 }
 
-export const tools = [
-  searchKnowledgeBaseTool,
-  checkAvailabilityTool,
-  bookAppointmentTool,
-  captureLeadTool,
-  lookupAppointmentTool,
-  cancelAppointmentTool,
-  rescheduleAppointmentTool,
-  updateAppointmentDetailsTool,
-].map(toVapiTool);
+export function buildTools(serverUrl = defaultServerUrl) {
+  const list = [
+    searchKnowledgeBaseTool,
+    checkAvailabilityTool,
+    bookAppointmentTool,
+    captureLeadTool,
+    lookupAppointmentTool,
+    cancelAppointmentTool,
+    rescheduleAppointmentTool,
+    updateAppointmentDetailsTool,
+  ].map((t) => toVapiTool(t, serverUrl));
 
-tools.push(
-  {
-    type: 'transferCall',
-    destinations: [
-      {
-        type: 'number',
-        number: config.humanTransferNumber,
-        message: "I'm transferring you to a member of our front desk team now.",
-        transferPlan: { mode: 'blind-transfer' },
-      },
-    ],
-  },
-  { type: 'endCall' }
-);
+  list.push(
+    {
+      type: 'transferCall',
+      destinations: [
+        {
+          type: 'number',
+          number: config.humanTransferNumber,
+          message: "I'm transferring you to a member of our front desk team now.",
+          transferPlan: { mode: 'blind-transfer' },
+        },
+      ],
+    },
+    { type: 'endCall' }
+  );
 
-// Retell's state machine (greeting -> FAQ / booking -> escalation) is replaced by one prompt: the
-// shared instructions already spell out the flow, and these lines cover what the states added.
+  return list;
+}
+
+export const tools = buildTools(defaultServerUrl);
+
 const vapiAddendum = `
-## Transfers
-- Use the transferCall tool for an upset caller, an explicit request for a person, or any
-  clinical question. A browser test call can't be transferred - if the transfer fails, apologise,
-  offer a callback, and if their need is about an existing appointment, handle it directly with
-  lookup_appointment / reschedule_appointment / cancel_appointment.
-- When the caller's request is fully handled and they have nothing else, say goodbye and use endCall.
+## Transfers & Escalations
+- For an upset caller, an explicit request for a person, or complex questions:
+  Since this demo telephony line cannot dial international numbers (+91) directly, do NOT crash the call with transferCall if the transfer number is international or fails. Instead, warmly say: "Our front desk team is currently assisting other guests. I can take down your name and number for an immediate callback, or I would be happy to help get you scheduled on our calendar right now — which would you prefer?"
+- Only invoke transferCall if you are on a compatible domestic line where live transfers are supported.
+- When the caller's request is fully handled and they have nothing else, say a warm goodbye and use endCall.
 `;
 
+export function getVapiAssistant(industryKey = 'clinic') {
+  const industry = getIndustry(industryKey);
+  const serverUrl = `${config.baseUrl}/webhooks/vapi/${industry.id}`;
+  const tz = industry.timezone || config.clinicTimezone;
+  const assistantTools = buildTools(serverUrl);
+
+  const assistantName =
+    industry.id === 'clinic'
+      ? config.vapi.assistantName
+      : `${industry.businessName} Assistant`;
+
+  return {
+    name: assistantName,
+    firstMessage: industry.getFirstMessage(),
+    firstMessageMode: 'assistant-speaks-first',
+    model: {
+      provider: config.vapi.modelProvider,
+      model: config.vapi.model,
+      temperature: 0.7,
+      messages: [
+        {
+          role: 'system',
+          content:
+            industry.getPrompt(`{{"now" | date: "%A, %B %d, %Y, %I:%M %p (%z)", "${tz}"}}`) +
+            vapiAddendum,
+        },
+      ],
+      tools: assistantTools,
+    },
+    voice: {
+      provider: config.vapi.voiceProvider,
+      voiceId: config.vapi.voiceId,
+      ...(config.vapi.voiceProvider === 'cartesia'
+        ? { model: 'sonic-3.5' }
+        : config.vapi.voiceProvider === '11labs'
+        ? { model: 'eleven_flash_v2_5', stability: 0.45, similarityBoost: 0.75, style: 0.2, speed: 0.98 }
+        : {}),
+    },
+    transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
+    startSpeakingPlan: {
+      waitSeconds: 0.3,
+      transcriptionEndpointingPlan: { onPunctuationSeconds: 0.25, onNoPunctuationSeconds: 1.0, onNumberSeconds: 0.7 },
+    },
+    stopSpeakingPlan: {
+      numWords: 2,
+      voiceSeconds: 0.3,
+      backoffSeconds: 1,
+    },
+    server: { url: serverUrl, headers, timeoutSeconds: 20 },
+    serverMessages: ['status-update', 'end-of-call-report'],
+    artifactPlan: { recordingEnabled: true },
+    maxDurationSeconds: 15 * 60,
+  };
+}
+
+// Default export for backward compatibility with existing tests
 export const assistant = {
   name: config.vapi.assistantName,
   firstMessage,
@@ -77,11 +137,10 @@ export const assistant = {
   model: {
     provider: config.vapi.modelProvider,
     model: config.vapi.model,
-    temperature: 0.4,
+    temperature: 0.7,
     messages: [
       {
         role: 'system',
-        // Vapi renders LiquidJS: this becomes e.g. "Monday, October 05, 2026, 03:45 PM (-0700)".
         content:
           receptionistPrompt({
             currentTime: `{{"now" | date: "%A, %B %d, %Y, %I:%M %p (%z)", "${config.clinicTimezone}"}}`,
@@ -90,17 +149,28 @@ export const assistant = {
     ],
     tools,
   },
-  voice: { provider: config.vapi.voiceProvider, voiceId: config.vapi.voiceId },
-  transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
-  // Vapi's defaults (0.4s wait, 1.5s after an unpunctuated phrase) spent ~460ms per turn just
-  // deciding the caller had finished - the largest single slice of the ~2s response latency.
-  // Numbers keep a longer pause so a phone number read out in chunks isn't cut off.
-  startSpeakingPlan: {
-    waitSeconds: 0.2,
-    transcriptionEndpointingPlan: { onPunctuationSeconds: 0.1, onNoPunctuationSeconds: 1.0, onNumberSeconds: 0.6 },
+  voice: {
+    provider: config.vapi.voiceProvider,
+    voiceId: config.vapi.voiceId,
+    ...(config.vapi.voiceProvider === 'cartesia'
+      ? { model: 'sonic-3.5' }
+      : config.vapi.voiceProvider === '11labs'
+      ? { model: 'eleven_flash_v2_5', stability: 0.45, similarityBoost: 0.75, style: 0.2, speed: 0.98 }
+      : {}),
   },
-  server: { url: serverUrl, headers, timeoutSeconds: 20 },
+  transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
+  startSpeakingPlan: {
+    waitSeconds: 0.3,
+    transcriptionEndpointingPlan: { onPunctuationSeconds: 0.25, onNoPunctuationSeconds: 1.0, onNumberSeconds: 0.7 },
+  },
+  stopSpeakingPlan: {
+    numWords: 2,
+    voiceSeconds: 0.3,
+    backoffSeconds: 1,
+  },
+  server: { url: defaultServerUrl, headers, timeoutSeconds: 20 },
   serverMessages: ['status-update', 'end-of-call-report'],
   artifactPlan: { recordingEnabled: true },
   maxDurationSeconds: 15 * 60,
 };
+

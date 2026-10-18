@@ -1,0 +1,42 @@
+[
+  {
+    "id": "hours-location",
+    "category": "logistics",
+    "text": "Vanguard Enterprise Solutions corporate office is open Monday to Friday 8:00am-6:00pm, closed on weekends and major holidays. Our headquarters is located at 500 Enterprise Way, Suite 400. Guest parking is validated in the North Garage. This is an interactive demo of our AI Corporate Voice Receptionist."
+  },
+  {
+    "id": "company-overview",
+    "category": "about",
+    "text": "Vanguard Enterprise Solutions is a technology and operations consulting firm helping growth-stage and enterprise businesses streamline operations, modernize legacy software, and deploy generative AI workflows to improve efficiency and reduce operating costs."
+  },
+  {
+    "id": "services-offerings",
+    "category": "services",
+    "text": "Our primary offerings include: Enterprise AI & Automation implementation, Cloud Infrastructure modernization, Custom Software Development, and Strategic Digital Transformation consulting. Engagements begin with a structured 30-minute Discovery Call."
+  },
+  {
+    "id": "pricing-engagements",
+    "category": "pricing",
+    "text": "Pricing is project-based or on a monthly dedicated retainer. Initial technical discovery roadmaps start at $5,000, and ongoing engineering retainers start at $2,500 per month. Exact proposals and scopes are delivered within 48 hours of an initial discovery meeting."
+  },
+  {
+    "id": "departments-routing",
+    "category": "departments",
+    "text": "Key departments: Sales & Solutions (new client partnerships and project discovery), Client Success (ongoing project management and technical support), Finance & Accounts (invoicing and billing questions), and Human Resources & Careers (employment inquiries)."
+  },
+  {
+    "id": "scheduling-consultations",
+    "category": "meetings",
+    "text": "Discovery calls and product demonstrations are scheduled for 30 minutes via video conference or at our corporate office. Same-week availability is open Tuesday through Friday between 9:00 AM and 4:30 PM."
+  },
+  {
+    "id": "visitor-policy",
+    "category": "policy",
+    "text": "All visiting clients and guests are asked to check in with security on the ground floor with a photo ID. Our front desk receptionist notifies the host host team upon arrival."
+  },
+  {
+    "id": "press-partnerships",
+    "category": "partnerships",
+    "text": "For vendor proposals, media requests, or strategic technology partnerships, our front desk logs your name, company, email, and a brief description of the opportunity, and routes it directly to our corporate development team."
+  }
+]

@@ -13,7 +13,7 @@ export const searchKnowledgeBaseTool = {
   description:
     'Look up clinic info ONLY: services, price RANGES, doctor profiles, hours/location, pre/post-care instructions, general FAQs (pain, recovery, side effects). Does NOT know appointment availability, open slots, or existing bookings - never call this for "can I book", "do you have availability", or anything about scheduling a time. top_k is fixed at 3 server-side to keep latency low.',
   speak_during_execution: true,
-  execution_message_description: 'Let me check that for you.',
+  execution_message_description: 'Sure thing, let me check that for you right now.',
   // Headroom over the RAG service's own ~4s worst case (live Qdrant+OpenAI mode) so a slow
   // embedding call doesn't blow the tool's deadline before our JSON even leaves the server.
   timeout_ms: 6000,
@@ -34,7 +34,7 @@ export const checkAvailabilityTool = {
   description:
     'THE tool for "can I book", "do you have availability", or scheduling a NEW visit - call this directly, not search_knowledge_base, even before you have the caller\'s phone number (phone is only needed later for book_appointment). Checks open appointment slots for a given service; the search already looks several weeks ahead automatically, so pass your best-guess date_from/date_to and trust the results. Each returned slot has "start" (ISO, pass exactly this back to book_appointment) and "label" (the correct spoken time in the clinic\'s timezone, e.g. "2:30 PM") - always read the label aloud, never compute your own AM/PM conversion from "start".',
   speak_during_execution: true,
-  execution_message_description: 'Let me check the calendar.',
+  execution_message_description: "Give me just a second, let me check our latest calendar and find an appointment for you.",
   // Must stay above scheduling.js's own axios timeout (4000ms) to Cal.com, with headroom
   // for the ngrok hop + JSON round trip — equal values here is what caused real timeouts.
   timeout_ms: 7000,
@@ -57,7 +57,7 @@ export const bookAppointmentTool = {
   description:
     'Book a confirmed appointment slot. Only call this after the patient has explicitly agreed to a specific time from check_availability, and you have their name and phone number.',
   speak_during_execution: true,
-  execution_message_description: "I'm booking that now.",
+  execution_message_description: "Awesome, I'm locking that appointment in for you right now.",
   // Above scheduling.js's bookSlot axios timeout (6000ms), with headroom.
   timeout_ms: 9000,
   parameters: {
@@ -104,7 +104,7 @@ export const lookupAppointmentTool = {
   description:
     "Look up an appointment the caller EXPLICITLY says they already made (e.g. \"find my appointment\", \"do I have a booking\"). Do NOT call this just because you collected a phone number - collecting phone is also a normal step of booking a brand-new appointment, which needs check_availability + book_appointment instead, not this.",
   speak_during_execution: true,
-  execution_message_description: 'Let me pull that up.',
+  execution_message_description: 'Let me pull up your appointment details.',
   timeout_ms: 5000,
   parameters: {
     type: 'object',
@@ -122,7 +122,7 @@ export const cancelAppointmentTool = {
   url: `${base}/functions/cancel-appointment`,
   description: "Cancel the caller's existing upcoming appointment. Confirm out loud before calling this.",
   speak_during_execution: true,
-  execution_message_description: "I'm cancelling that now.",
+  execution_message_description: "I'm processing that cancellation for you now.",
   // Above scheduling.js's cancelBooking axios timeout (6000ms) - was 5000 here, which was
   // actually *below* the axios timeout it wraps, guaranteeing a Retell-side timeout first.
   timeout_ms: 9000,
@@ -143,7 +143,7 @@ export const rescheduleAppointmentTool = {
   description:
     "Move the caller's existing appointment to a new time. Use check_availability first to find a new slot, confirm it out loud, then call this.",
   speak_during_execution: true,
-  execution_message_description: "I'm moving that for you.",
+  execution_message_description: "I'm rescheduling that for you right now.",
   // This tool runs cancel then book SEQUENTIALLY server-side (see reschedule-appointment in
   // src/routes/functions.js) - worst case is both axios timeouts back to back (~12s), so this
   // needs real headroom above that, not just above a single call.

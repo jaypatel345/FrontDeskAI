@@ -6,7 +6,7 @@ export const blandWebhookRouter = Router();
 // Field names per https://docs.bland.ai/tutorials/post-call-webhooks — the `escalated`
 // detection is best-effort (no confirmed dedicated field); cross-check against a real
 // payload once verification clears and adjust if `status`/`variables` differ.
-blandWebhookRouter.post('/', (req, res) => {
+blandWebhookRouter.post('/:industry?', (req, res) => {
   const call = req.body || {};
   if (!call.call_id) return res.sendStatus(200);
 

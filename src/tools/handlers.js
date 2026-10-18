@@ -4,8 +4,9 @@ import { checkAvailability, bookSlot, cancelBooking } from '../services/scheduli
 import { pushLeadToCrm } from '../services/crm.js';
 import { sendConfirmationSms } from '../services/sms.js';
 import { searchKnowledgeBase } from '../services/rag.js';
-import { schemas, validateArgs } from '../validation/toolArgs.js';
+import { schemas, buildSchemas, validateArgs } from '../validation/toolArgs.js';
 import { insertLead, insertBooking, upsertCall, findLatestBookingByPhone, updateBookingStatus } from '../db.js';
+import { getIndustry } from '../industries/registry.js';
 
 /**
  * The receptionist's tools, independent of which voice platform calls them. Retell/Bland hit
@@ -16,7 +17,7 @@ import { insertLead, insertBooking, upsertCall, findLatestBookingByPhone, update
  *   schema  - zod schema for its arguments
  *   invalid - the response shape for a validation error (read back to the agent)
  *   failed  - the response when something throws (scheduling down, etc.)
- *   run     - (validated args, { callId }) => response object
+ *   run     - (validated args, { callId, industry }) => response object
  */
 
 const MIN_LOOKAHEAD_DAYS = 21;
@@ -33,8 +34,8 @@ export function searchWindowEnd(dateFrom, dateTo) {
   return dateTo && Date.parse(dateTo) > Date.parse(minDateTo) ? dateTo : minDateTo;
 }
 
-const spokenTime = (iso, dateStyle = 'medium') =>
-  new Date(iso).toLocaleString('en-US', { dateStyle, timeStyle: 'short', timeZone: config.clinicTimezone });
+const spokenTime = (iso, dateStyle = 'medium', tz = config.clinicTimezone) =>
+  new Date(iso).toLocaleString('en-US', { dateStyle, timeStyle: 'short', timeZone: tz });
 
 const NO_BOOKING = { success: false, error: 'No upcoming appointment found for that phone number.' };
 
@@ -57,7 +58,7 @@ export const tools = {
     schema: schemas.bookAppointment,
     invalid: (error) => ({ success: false, error }),
     failed: { success: false, error: 'Could not complete the booking right now, offer a callback instead.' },
-    async run({ service, start_time, name, phone, email }, { callId }) {
+    async run({ service, start_time, name, phone, email }, { callId, industry = getIndustry('clinic') }) {
       const booking = await bookSlot({ service, startTime: start_time, name, phone, email });
 
       insertBooking({
@@ -80,10 +81,12 @@ export const tools = {
         console.error('[crm push failed]', e.message)
       );
 
-      const when = spokenTime(start_time);
+      const tz = industry?.timezone || config.clinicTimezone;
+      const businessName = industry?.businessName || config.clinicName;
+      const when = spokenTime(start_time, 'medium', tz);
       sendConfirmationSms({
         to: phone,
-        body: `You're confirmed for ${service} on ${when}. Reply to this text if you need to reschedule. - ${config.clinicName}`,
+        body: `You're confirmed for ${service} on ${when}. Reply to this text if you need to reschedule. - ${businessName}`,
       }).catch((e) => console.error('[sms failed]', e.message));
 
       return { success: true, confirmed_time: start_time, message: `Booked ${service} for ${when}.` };
@@ -94,8 +97,8 @@ export const tools = {
     schema: schemas.searchKnowledgeBase,
     invalid: (error) => ({ results: [], error }),
     failed: { results: [], error: 'Knowledge base lookup failed.' },
-    async run({ query }) {
-      const results = await searchKnowledgeBase(query, 3);
+    async run({ query }, { industry = getIndustry('clinic') } = {}) {
+      const results = await searchKnowledgeBase(query, 3, industry?.id || 'clinic');
       return { results: results.map((r) => ({ topic: r.id, info: r.text })) };
     },
   },
@@ -146,10 +149,11 @@ export const tools = {
     schema: schemas.phoneOnly,
     invalid: (error) => ({ found: false, error }),
     failed: { found: false, error: 'Could not look that up right now.' },
-    async run({ phone }) {
+    async run({ phone }, { industry = getIndustry('clinic') } = {}) {
       const existing = findLatestBookingByPhone(phone);
       if (!existing) return { found: false };
-      return { found: true, service: existing.service, when: spokenTime(existing.start_time, 'full') };
+      const tz = industry?.timezone || config.clinicTimezone;
+      return { found: true, service: existing.service, when: spokenTime(existing.start_time, 'full', tz) };
     },
   },
 
@@ -172,7 +176,7 @@ export const tools = {
     schema: schemas.rescheduleAppointment,
     invalid: (error) => ({ success: false, error }),
     failed: { success: false, error: 'Could not reschedule right now, offer a callback instead.' },
-    async run({ phone, new_start_time }, { callId }) {
+    async run({ phone, new_start_time }, { callId, industry = getIndustry('clinic') }) {
       const existing = findLatestBookingByPhone(phone);
       if (!existing) return NO_BOOKING;
 
@@ -194,10 +198,12 @@ export const tools = {
         created_at: Date.now(),
       });
 
-      const when = spokenTime(new_start_time);
+      const tz = industry?.timezone || config.clinicTimezone;
+      const businessName = industry?.businessName || config.clinicName;
+      const when = spokenTime(new_start_time, 'medium', tz);
       sendConfirmationSms({
         to: phone,
-        body: `Your ${existing.service} appointment was moved to ${when}. - ${config.clinicName}`,
+        body: `Your ${existing.service} appointment was moved to ${when}. - ${businessName}`,
       }).catch((e) => console.error('[sms failed]', e.message));
 
       return { success: true, message: `Moved your ${existing.service} appointment to ${when}.` };
@@ -243,17 +249,32 @@ export const tools = {
 
 // Validates, runs, and never throws: every outcome is a plain object the agent can read, because a
 // voice platform that gets an HTTP error just goes quiet instead of telling the caller anything.
-export async function runTool(name, args, { callId = null } = {}) {
+export async function runTool(name, args, { callId = null, industryKey = null } = {}) {
   const tool = tools[name];
   if (!tool) return { success: false, error: `Unknown tool "${name}".` };
 
-  const { data, error } = validateArgs(tool.schema, args);
+  const industry = getIndustry(industryKey || args?.industry);
+  const industrySchemas = buildSchemas(industry.id);
+  const schemaMap = {
+    check_availability: industrySchemas.checkAvailability,
+    book_appointment: industrySchemas.bookAppointment,
+    search_knowledge_base: industrySchemas.searchKnowledgeBase,
+    capture_lead: industrySchemas.captureLead,
+    lookup_appointment: industrySchemas.phoneOnly,
+    cancel_appointment: industrySchemas.phoneOnly,
+    reschedule_appointment: industrySchemas.rescheduleAppointment,
+    update_appointment_details: industrySchemas.updateAppointmentDetails,
+  };
+
+  const schemaToUse = schemaMap[name] || tool.schema;
+  const { data, error } = validateArgs(schemaToUse, args);
   if (error) return tool.invalid(error);
 
   try {
-    return await tool.run(data, { callId });
+    return await tool.run(data, { callId, industry });
   } catch (err) {
     console.error(`[${name}]`, err.message);
     return tool.failed;
   }
 }
+

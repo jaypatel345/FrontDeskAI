@@ -1,23 +1,10 @@
 import { z } from 'zod';
+import { getIndustry } from '../industries/registry.js';
+import { SERVICES as CLINIC_SERVICES, canonicalService as clinicCanonicalService } from '../industries/clinic/services.js';
 
-// The services the clinic actually offers (see kb/clinicKnowledgeBase.json). Callers and the LLM
-// say these many ways ("lip filler", "tox", "hydrafacial"), so match loosely and store one name.
-// Order matters: more specific patterns come before broader ones.
-export const SERVICES = [
-  { name: 'Botox', match: /botox|\btox\b|dysport|wrinkle relax/i },
-  { name: 'Filler', match: /filler|\blips?\b|cheek|jawline/i },
-  { name: 'Laser Hair Removal', match: /hair removal|laser hair/i },
-  { name: 'Laser Skin Resurfacing', match: /resurfac/i },
-  { name: 'Laser Pigmentation Treatment', match: /pigment|redness|\bipl\b/i },
-  { name: 'HydraFacial', match: /hydra\s*facial|\bfacial\b/i },
-  { name: 'Chemical Peel', match: /peel/i },
-  { name: 'Microneedling', match: /micro\s*-?\s*needl/i },
-  { name: 'Consultation', match: /consult/i },
-];
-
-export function canonicalService(input) {
-  return SERVICES.find((s) => s.match.test(input))?.name ?? null;
-}
+// The default services (clinic) for backward compatibility
+export const SERVICES = CLINIC_SERVICES;
+export const canonicalService = clinicCanonicalService;
 
 // Turns whatever the LLM heard ("(555) 123-4567", "5551234567", "+44 20 7946 0958") into E.164.
 // Bare 10-digit numbers are treated as US/Canada, matching this clinic.
@@ -65,39 +52,84 @@ const email = z
   .trim()
   .email("doesn't look like a valid email - spell it back to the caller letter by letter and confirm");
 
-const service = z
-  .string({ required_error: 'is required' })
-  .transform((v, ctx) => {
-    const name = canonicalService(v);
-    if (!name) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `"${v}" isn't a service the clinic offers. Offered services: ${SERVICES.map((s) => s.name).join(', ')}`,
-      });
-      return z.NEVER;
-    }
-    return name;
-  });
+export function createServiceValidator(industryKey = 'clinic') {
+  const industry = getIndustry(industryKey);
+  const svcList = industry.services || CLINIC_SERVICES;
+  const canonicalFn = industry.canonicalService || clinicCanonicalService;
+
+  return z
+    .string({ required_error: 'is required' })
+    .transform((v, ctx) => {
+      const name = canonicalFn(v);
+      if (!name) {
+        const errorMsg =
+          industry.id === 'clinic'
+            ? `"${v}" isn't a service the clinic offers. Offered services: ${svcList.map((s) => s.name).join(', ')}`
+            : `"${v}" isn't an offered service. Offered options: ${svcList.map((s) => s.name).join(', ')}`;
+
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: errorMsg,
+        });
+        return z.NEVER;
+      }
+      return name;
+    });
+}
 
 const name = z.string({ required_error: 'is required' }).trim().min(1, 'is required').max(100);
 const shortText = z.string().trim().max(200);
 
-export const schemas = {
-  checkAvailability: z.object({ service, date_from: optional(isoDateTime), date_to: optional(isoDateTime) }),
-  bookAppointment: z.object({ service, start_time: futureDateTime, name, phone, email }),
-  searchKnowledgeBase: z.object({ query: z.string({ required_error: 'is required' }).trim().min(1, 'is required').max(500) }),
-  captureLead: z.object({
-    name: optional(name),
-    phone: optional(phone),
-    email: optional(email),
-    treatment_interest: optional(shortText),
-    budget: optional(shortText),
-    urgency: optional(shortText),
-  }),
-  phoneOnly: z.object({ phone }),
-  rescheduleAppointment: z.object({ phone, new_start_time: futureDateTime }),
-  updateAppointmentDetails: z.object({ phone, new_name: optional(name), new_email: optional(email), new_phone: optional(phone) }),
-};
+export function buildSchemas(industryKey = 'clinic') {
+  const service = createServiceValidator(industryKey);
+  return {
+    checkAvailability: z.object({
+      service,
+      date_from: optional(isoDateTime),
+      date_to: optional(isoDateTime),
+      industry: optional(shortText),
+    }),
+    bookAppointment: z.object({
+      service,
+      start_time: futureDateTime,
+      name,
+      phone,
+      email,
+      industry: optional(shortText),
+    }),
+    searchKnowledgeBase: z.object({
+      query: z.string({ required_error: 'is required' }).trim().min(1, 'is required').max(500),
+      industry: optional(shortText),
+    }),
+    captureLead: z.object({
+      name: optional(name),
+      phone: optional(phone),
+      email: optional(email),
+      treatment_interest: optional(shortText),
+      interest: optional(shortText),
+      notes: optional(shortText),
+      company: optional(shortText),
+      budget: optional(shortText),
+      urgency: optional(shortText),
+      industry: optional(shortText),
+    }).transform((data) => ({
+      ...data,
+      treatment_interest: data.treatment_interest || data.interest || data.notes || null,
+    })),
+    phoneOnly: z.object({ phone, industry: optional(shortText) }),
+    rescheduleAppointment: z.object({ phone, new_start_time: futureDateTime, industry: optional(shortText) }),
+    updateAppointmentDetails: z.object({
+      phone,
+      new_name: optional(name),
+      new_email: optional(email),
+      new_phone: optional(phone),
+      industry: optional(shortText),
+    }),
+  };
+}
+
+// Default clinic schemas for backward compatibility with existing tests and callers
+export const schemas = buildSchemas('clinic');
 
 // Returns { data } on success or { error } with a sentence the agent can act on or read back,
 // e.g. "phone doesn't look like a full phone number - read it back to the caller...".
@@ -107,3 +139,4 @@ export function validateArgs(schema, args) {
   const problems = result.error.issues.map((i) => `${i.path.join('.') || 'input'} ${i.message}`);
   return { error: `${problems.join('; ')}.` };
 }
+
