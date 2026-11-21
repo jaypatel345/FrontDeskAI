@@ -40,6 +40,8 @@ export const config = {
     model: process.env.SARVAM_MODEL || 'bulbul:v4-flash',
     speaker: process.env.SARVAM_SPEAKER || 'ritu_hi_customer',
     language: process.env.SARVAM_LANGUAGE || 'hi-IN',
+    // A touch quicker than 1.0 sounds like a busy front desk rather than a narrator.
+    pace: Number(process.env.SARVAM_PACE) || 1.1,
   },
 
   bland: {

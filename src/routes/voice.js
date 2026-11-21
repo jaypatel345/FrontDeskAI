@@ -1,4 +1,5 @@
 import express from 'express';
+import https from 'node:https';
 import { config } from '../config.js';
 
 /**
@@ -13,7 +14,8 @@ import { config } from '../config.js';
  */
 export const voiceRouter = express.Router();
 
-const SARVAM_STREAM_URL = 'https://api.sarvam.ai/text-to-speech/stream';
+const SARVAM_HOST = 'api.sarvam.ai';
+const SARVAM_STREAM_PATH = '/text-to-speech/stream';
 // The rates Sarvam's streaming endpoint accepts.
 const SAMPLE_RATES = new Set([8000, 16000, 22050, 24000]);
 const MAX_TEXT = 3500;
@@ -22,7 +24,34 @@ const MAX_TEXT = 3500;
 const SPEAKER_RE = /^[a-z0-9_]{2,60}$/;
 const LANG_RE = /^[a-z]{2}-IN$/;
 
-voiceRouter.post('/sarvam', async (req, res) => {
+// This server (Oregon) is far from Sarvam (India): a fresh TLS connection costs ~3 round trips,
+// ~0.7s, before any audio. Built-in fetch drops idle connections after 4s - shorter than the
+// gap between two replies - so every sentence paid that. Keep sockets open between turns instead.
+const sarvamAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 15_000, maxSockets: 32 });
+
+// Test hook: swap the HTTP request function (defaults to https.request with the keep-alive agent).
+let requestImpl = (options, onResponse) => https.request({ ...options, agent: sarvamAgent }, onResponse);
+export function setSarvamRequest(fn) {
+  requestImpl = fn || ((options, onResponse) => https.request({ ...options, agent: sarvamAgent }, onResponse));
+}
+
+/**
+ * Opens (or keeps) a connection to Sarvam so the first sentence of a call doesn't pay for the
+ * TLS handshake. Called when a Hindi demo call starts; costs nothing (an unauthenticated GET).
+ */
+export function warmSarvam() {
+  if (!config.sarvam.apiKey) return;
+  try {
+    const req = requestImpl({ host: SARVAM_HOST, path: '/', method: 'GET' }, (res) => res.resume());
+    req.on('error', () => {});
+    req.setTimeout(5000, () => req.destroy());
+    req.end();
+  } catch {
+    // best effort
+  }
+}
+
+voiceRouter.post('/sarvam', (req, res) => {
   if (!config.sarvam.apiKey) return res.status(503).json({ error: 'SARVAM_API_KEY is not set' });
 
   const message = req.body?.message;
@@ -33,47 +62,60 @@ voiceRouter.post('/sarvam', async (req, res) => {
 
   const speaker = SPEAKER_RE.test(req.query.speaker || '') ? req.query.speaker : config.sarvam.speaker;
   const languageCode = LANG_RE.test(req.query.lang || '') ? req.query.lang : config.sarvam.language;
+  const body = JSON.stringify({
+    text: text.slice(0, MAX_TEXT),
+    language_code: languageCode,
+    model: config.sarvam.model,
+    speaker,
+    pace: config.sarvam.pace,
+    output_audio_codec: 'linear16',
+    speech_sample_rate: sampleRate,
+  });
 
+  let finished = false;
+  const upstream = requestImpl(
+    {
+      host: SARVAM_HOST,
+      path: SARVAM_STREAM_PATH,
+      method: 'POST',
+      headers: {
+        'api-subscription-key': config.sarvam.apiKey,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    },
+    (up) => {
+      if (up.statusCode !== 200) {
+        let detail = '';
+        up.setEncoding('utf8');
+        up.on('data', (d) => (detail += d));
+        up.on('end', () => {
+          console.error(`[sarvam] ${up.statusCode}: ${detail.slice(0, 300)}`);
+          if (!res.headersSent) res.status(502).json({ error: 'Voice provider error' });
+        });
+        return;
+      }
+      res.status(200).set('Content-Type', 'application/octet-stream');
+      up.pipe(res);
+      up.on('end', () => (finished = true));
+      up.on('error', (err) => {
+        console.error('[sarvam] stream broke:', err.message);
+        res.destroy();
+      });
+    }
+  );
+
+  upstream.on('error', (err) => {
+    if (finished || res.writableEnded) return;
+    console.error('[sarvam] request failed:', err.message);
+    if (!res.headersSent) res.status(502).json({ error: 'Voice provider unreachable' });
+    else res.destroy();
+  });
   // The caller interrupting (or Vapi giving up) closes this request: stop paying Sarvam for audio
   // nobody will hear.
-  const abort = new AbortController();
-  res.on('close', () => abort.abort());
+  res.on('close', () => {
+    if (!res.writableFinished) upstream.destroy();
+  });
 
-  let upstream;
-  try {
-    upstream = await fetch(SARVAM_STREAM_URL, {
-      method: 'POST',
-      headers: { 'api-subscription-key': config.sarvam.apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: text.slice(0, MAX_TEXT),
-        language_code: languageCode,
-        model: config.sarvam.model,
-        speaker,
-        output_audio_codec: 'linear16',
-        speech_sample_rate: sampleRate,
-      }),
-      signal: abort.signal,
-    });
-  } catch (err) {
-    if (abort.signal.aborted) return;
-    console.error('[sarvam] request failed:', err.message);
-    return res.status(502).json({ error: 'Voice provider unreachable' });
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    const detail = await upstream.text().catch(() => '');
-    console.error(`[sarvam] ${upstream.status}: ${detail.slice(0, 300)}`);
-    return res.status(502).json({ error: 'Voice provider error' });
-  }
-
-  res.status(200).set('Content-Type', 'application/octet-stream');
-  try {
-    for await (const chunk of upstream.body) {
-      if (!res.write(chunk)) await new Promise((resolve) => res.once('drain', resolve));
-    }
-    res.end();
-  } catch (err) {
-    if (!abort.signal.aborted) console.error('[sarvam] stream broke:', err.message);
-    res.destroy();
-  }
+  upstream.end(body);
 });

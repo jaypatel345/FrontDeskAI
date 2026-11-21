@@ -226,11 +226,26 @@ export function getVapiDemoAssistant() {
 
 // Everyday Hindi, not textbook Hindi - and written so Sarvam pronounces both halves naturally.
 const hinglishRule = `
-## Hindi demo
-Speak everyday Hinglish, the way a friendly clinic receptionist in India talks: simple Hindi with common English words kept in English (appointment, doctor, booking, time, slot, consultation, clinic, email, number, treatment). Never use formal or textbook Hindi ("appointment", not "नियुक्ति"; "available", not "उपलब्ध"; "consultation", not "परामर्श").
-Write Hindi words in Devanagari and English words in English letters. Say times like "सुबह 11 बजे" or "शाम 5 बजे". Read emails and phone numbers back in English.
-If the caller speaks English, reply in English.
+## Hindi demo: talk like a real Indian receptionist on the phone
+- Everyday Hinglish: simple Hindi, common English words kept in English (appointment, doctor, booking, time, slot, consultation, clinic, services, treatment, available, please, thank you, sorry). Never formal or textbook Hindi: no कृपया, धन्यवाद, सेवाएँ, उपलब्ध, परामर्श, नियुक्ति.
+- Short and casual, a little clipped, like people really talk. One short line, then stop. Don't list or explain everything.
+  Asked about services: "हाँ जी, ये सब services हमारे पास हैं। किसके लिए आना है?" - not a list of every treatment.
+  Natural endings: "book कर दूँ?", "बताइए", "हो जाएगा", "ठीक है जी", "एक second".
+- Write Hindi words in Devanagari and English words in English letters. Times like "सुबह 11 बजे", "शाम 5 बजे".
+- Phone numbers: ALWAYS in English words, one digit at a time, never Hindi numbers and never grouped: "six three five four eight eight zero four four seven". Same for email: "jay patel two one zero seven seven six at gmail dot com".
+- If the caller speaks English, reply in English.
 `;
+
+// Spoken while a tool runs - the English defaults sound odd in a Hindi call.
+const HINDI_TOOL_LINES = {
+  search_knowledge_base: 'एक second, check करती हूँ।',
+  check_availability: 'एक second, calendar देख लेती हूँ।',
+  book_appointment: 'ठीक है, book कर रही हूँ।',
+  lookup_appointment: 'एक second, आपकी booking देखती हूँ।',
+  cancel_appointment: 'ठीक है, cancel कर रही हूँ।',
+  reschedule_appointment: 'ठीक है, time change कर रही हूँ।',
+  update_appointment_details: 'एक second, update कर देती हूँ।',
+};
 
 /**
  * The Hindi version of the website demo: same prompt, tools and turn-taking, but spoken by
@@ -243,10 +258,15 @@ export function getVapiDemoHindiAssistant() {
   return {
     ...base,
     name: 'FrontDesk Demo Receptionist Hindi',
-    firstMessage: 'नमस्ते! {{ clinic_name | default: "Demo Smile Clinic" }} में आपका स्वागत है। मैं Maya बोल रही हूँ, बताइए मैं आपकी क्या help कर सकती हूँ?',
+    firstMessage: 'नमस्ते! {{ clinic_name | default: "Demo Smile Clinic" }} से Maya बोल रही हूँ। बताइए, क्या help करूँ?',
     model: {
       ...base.model,
       messages: [{ role: 'system', content: base.model.messages[0].content.replace("You are Ava", 'You are Maya') + hinglishRule }],
+      tools: base.model.tools.map((t) =>
+        t.messages && t.function
+          ? { ...t, messages: t.messages.map((m) => ({ ...m, content: HINDI_TOOL_LINES[t.function.name] || 'एक second जी।' })) }
+          : t
+      ),
     },
     voice: {
       provider: 'custom-voice',

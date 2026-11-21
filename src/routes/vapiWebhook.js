@@ -4,6 +4,7 @@ import { upsertCall } from '../db.js';
 import { logCallToCrm } from '../services/crm.js';
 import { getIndustry } from '../industries/registry.js';
 import { prefetchAvailability } from '../services/scheduling.js';
+import { warmSarvam } from './voice.js';
 import { resolveDemo } from '../services/demoProfiles.js';
 
 // Vapi sends everything to one server URL as { message: { type, call, ... } } - tool calls and
@@ -92,6 +93,8 @@ function handleStatusUpdate(message, industryKey = 'clinic') {
   if (!call?.id) return;
   // Warm the calendar cache while the greeting plays (real calls only - demos use fake slots).
   if (status === 'in-progress' && !demoIdFromCall(call) && industryKey !== 'demo') prefetchAvailability();
+  // Hindi demo calls speak through Sarvam: open that connection before the first sentence needs it.
+  if (industryKey === 'demo' && ['queued', 'ringing', 'in-progress'].includes(status)) warmSarvam();
   upsertCall({
     ...baseCallRow(call, industryKey),
     status: status === 'in-progress' ? 'in_progress' : status,

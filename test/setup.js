@@ -18,6 +18,7 @@ const env = {
   TWILIO_FROM_NUMBER: '',
   OPENAI_API_KEY: '',
   BLAND_API_KEY: '',
+  SARVAM_API_KEY: '',
 };
 Object.assign(process.env, env);
 

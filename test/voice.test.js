@@ -4,6 +4,9 @@ import request from 'supertest';
 import { app } from './helpers.js';
 import { config } from '../src/config.js';
 import { getVapiDemoHindiAssistant } from '../vapi/assistant.js';
+import { setSarvamRequest } from '../src/routes/voice.js';
+import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 
 const SECRET = process.env.FUNCTIONS_SECRET;
 const voiceRequest = (text = 'नमस्ते, आपका appointment book हो गया है।', sampleRate = 24000) => ({
@@ -20,22 +23,28 @@ const post = (body, query = '') => {
 };
 
 describe('Sarvam custom voice', () => {
-  const realFetch = globalThis.fetch;
   const realKey = config.sarvam.apiKey;
   let sent;
+  // A fake https.request: records what we sent, answers with a status and body chunks.
+  const fakeSarvam = (status = 200, chunks = [Buffer.from([1, 2, 3, 4]), Buffer.from([5, 6])]) =>
+    setSarvamRequest((options, onResponse) => {
+      const req = new EventEmitter();
+      req.destroy = () => {};
+      req.end = (body) => {
+        sent = { options, body: JSON.parse(body) };
+        const res = Readable.from(chunks);
+        res.statusCode = status;
+        setImmediate(() => onResponse(res));
+      };
+      return req;
+    });
   beforeEach(() => {
     config.sarvam.apiKey = 'test-key';
     sent = null;
-    globalThis.fetch = async (url, init) => {
-      sent = { url, body: JSON.parse(init.body), key: init.headers['api-subscription-key'] };
-      // Two chunks of fake 16-bit PCM, as Sarvam streams it.
-      return new Response(new ReadableStream({
-        start(c) { c.enqueue(new Uint8Array([1, 2, 3, 4])); c.enqueue(new Uint8Array([5, 6])); c.close(); },
-      }), { status: 200, headers: { 'content-type': 'audio/pcm' } });
-    };
+    fakeSarvam();
   });
   afterEach(() => {
-    globalThis.fetch = realFetch;
+    setSarvamRequest(null);
     config.sarvam.apiKey = realKey;
   });
 
@@ -43,8 +52,10 @@ describe('Sarvam custom voice', () => {
     const res = await post(voiceRequest('नमस्ते', 16000));
     assert.equal(res.status, 200);
     assert.deepEqual([...res.body], [1, 2, 3, 4, 5, 6]);
-    assert.equal(sent.url, 'https://api.sarvam.ai/text-to-speech/stream');
-    assert.equal(sent.key, 'test-key');
+    assert.equal(sent.options.host, 'api.sarvam.ai');
+    assert.equal(sent.options.path, '/text-to-speech/stream');
+    assert.equal(sent.options.headers['api-subscription-key'], 'test-key');
+    assert.equal(sent.body.pace, 1.1);
     assert.equal(sent.body.output_audio_codec, 'linear16');
     assert.equal(sent.body.speech_sample_rate, 16000);
     assert.equal(sent.body.speaker, 'ritu_hi_customer');
@@ -66,7 +77,7 @@ describe('Sarvam custom voice', () => {
   });
 
   test('a Sarvam error returns 502 so Vapi uses the fallback voice', async () => {
-    globalThis.fetch = async () => new Response('{"error":"bad"}', { status: 422 });
+    fakeSarvam(422, [Buffer.from('{"error":"bad"}')]);
     assert.equal((await post(voiceRequest())).status, 502);
   });
 
@@ -84,5 +95,15 @@ describe('Sarvam custom voice', () => {
     assert.match(a.model.messages[0].content, /^\s*You are Maya/);
     assert.match(a.model.messages[0].content, /Hinglish/);
     assert.match(a.server.url, /\/webhooks\/vapi\/demo$/);
+  });
+
+  test('Hindi demo: phone numbers in English words, short casual replies, Hindi tool lines', () => {
+    const a = getVapiDemoHindiAssistant();
+    const prompt = a.model.messages[0].content;
+    assert.match(prompt, /Phone numbers: ALWAYS in English words/);
+    assert.match(prompt, /ये सब services हमारे पास हैं/);
+    const check = a.model.tools.find((t) => t.function?.name === 'check_availability');
+    assert.equal(check.messages[0].content, 'एक second, calendar देख लेती हूँ।');
+    for (const t of a.model.tools) for (const m of t.messages || []) assert.doesNotMatch(m.content, /Let me|Sure thing/);
   });
 });
