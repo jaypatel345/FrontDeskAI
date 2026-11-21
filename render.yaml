@@ -45,3 +45,6 @@ services:
       # upperlayerstudio.com (with and without www) plus localhost.
       - key: DEMO_ALLOWED_ORIGINS
         sync: false
+      # Sarvam TTS for the Hindi demo voice (/voice/sarvam). Without it Vapi uses Azure's Hindi voice.
+      - key: SARVAM_API_KEY
+        sync: false

@@ -24,7 +24,8 @@
     "test": "node --test \"test/**/*.test.js\"",
     "latency": "node scripts/latencyReport.js",
     "bench:models": "node scripts/modelBench.js",
-    "setup:vapi:demo": "node vapi/setupAssistant.js demo"
+    "setup:vapi:demo": "node vapi/setupAssistant.js demo",
+    "setup:vapi:demo-hindi": "node vapi/setupAssistant.js demo-hindi"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.11.0",

@@ -11,6 +11,7 @@ import { vapiWebhookRouter } from './routes/vapiWebhook.js';
 import { blandWebhookRouter } from './routes/blandWebhook.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { demoRouter } from './routes/demo.js';
+import { voiceRouter } from './routes/voice.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -67,6 +68,9 @@ app.use('/webhooks/retell', retellWebhookRouter);
 // Vapi sends tool calls here too, so it gets the same rate limit and secret as /functions/*.
 app.use('/webhooks/vapi', functionsLimiter, requireFunctionsSecret, vapiWebhookRouter);
 app.use('/webhooks/bland', blandWebhookRouter);
+// Vapi custom-voice requests (one per spoken sentence) - same secret as the webhooks, which the
+// assistant sends from its own server-side settings. No rate limit: a busy call sends many.
+app.use('/voice', requireFunctionsSecret, voiceRouter);
 app.use('/api/dashboard', dashboardLimiter, requireDashboardAuth, dashboardRouter);
 app.get('/dashboard', dashboardLimiter, requireDashboardAuth, (req, res) =>
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'))

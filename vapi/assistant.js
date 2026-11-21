@@ -223,3 +223,36 @@ export function getVapiDemoAssistant() {
     maxDurationSeconds: 10 * 60,
   };
 }
+
+// Everyday Hindi, not textbook Hindi - and written so Sarvam pronounces both halves naturally.
+const hinglishRule = `
+## Hindi demo
+Speak everyday Hinglish, the way a friendly clinic receptionist in India talks: simple Hindi with common English words kept in English (appointment, doctor, booking, time, slot, consultation, clinic, email, number, treatment). Never use formal or textbook Hindi ("appointment", not "नियुक्ति"; "available", not "उपलब्ध"; "consultation", not "परामर्श").
+Write Hindi words in Devanagari and English words in English letters. Say times like "सुबह 11 बजे" or "शाम 5 बजे". Read emails and phone numbers back in English.
+If the caller speaks English, reply in English.
+`;
+
+/**
+ * The Hindi version of the website demo: same prompt, tools and turn-taking, but spoken by
+ * Sarvam's Ritu voice (natural Indian Hindi) through /voice/sarvam, in everyday Hinglish.
+ * Its own assistant (not a browser override) so the server secret stays in Vapi, never in the page.
+ * If Sarvam fails, Vapi falls back to Azure's Hindi voice.
+ */
+export function getVapiDemoHindiAssistant() {
+  const base = getVapiDemoAssistant();
+  return {
+    ...base,
+    name: 'FrontDesk Demo Receptionist Hindi',
+    firstMessage: 'नमस्ते! {{ clinic_name | default: "Demo Smile Clinic" }} में आपका स्वागत है। मैं Maya बोल रही हूँ, बताइए मैं आपकी क्या help कर सकती हूँ?',
+    model: {
+      ...base.model,
+      messages: [{ role: 'system', content: base.model.messages[0].content.replace("You are Ava", 'You are Maya') + hinglishRule }],
+    },
+    voice: {
+      provider: 'custom-voice',
+      server: { url: `${config.baseUrl}/voice/sarvam`, headers, timeoutSeconds: 10 },
+      fallbackPlan: { voices: [{ provider: 'azure', voiceId: 'hi-IN-SwaraNeural' }] },
+    },
+    transcriber: { provider: 'deepgram', model: 'nova-3', language: 'multi' },
+  };
+}

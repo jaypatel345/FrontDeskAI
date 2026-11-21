@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import axios from 'axios';
 import { config } from '../src/config.js';
-import { getVapiAssistant, getVapiDemoAssistant, assistant as defaultAssistant } from './assistant.js';
+import { getVapiAssistant, getVapiDemoAssistant, getVapiDemoHindiAssistant, assistant as defaultAssistant } from './assistant.js';
 import { listIndustryIds, normalizeIndustryKey } from '../src/industries/registry.js';
 
 if (!config.vapi.privateKey) {
@@ -28,7 +28,13 @@ function getStateFile(industryKey) {
 
 async function setupSingleAssistant(industryKey) {
   const assistantPayload =
-    industryKey === 'clinic' ? defaultAssistant : industryKey === 'demo' ? getVapiDemoAssistant() : getVapiAssistant(industryKey);
+    industryKey === 'clinic'
+      ? defaultAssistant
+      : industryKey === 'demo'
+        ? getVapiDemoAssistant()
+        : industryKey === 'demo-hindi'
+          ? getVapiDemoHindiAssistant()
+          : getVapiAssistant(industryKey);
   const stateFile = getStateFile(industryKey);
   const existing = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf-8')) : null;
 
@@ -54,11 +60,11 @@ async function main() {
   const rawArg = process.argv[2] ? process.argv[2].replace(/^--industry=/, '').trim().toLowerCase() : null;
 
   if (rawArg === 'all') {
-    for (const key of [...listIndustryIds(), 'demo']) {
+    for (const key of [...listIndustryIds(), 'demo', 'demo-hindi']) {
       await setupSingleAssistant(key);
     }
-  } else if (rawArg === 'demo') {
-    await setupSingleAssistant('demo');
+  } else if (rawArg === 'demo' || rawArg === 'demo-hindi') {
+    await setupSingleAssistant(rawArg);
   } else if (rawArg) {
     const norm = normalizeIndustryKey(rawArg);
     if (!norm) {

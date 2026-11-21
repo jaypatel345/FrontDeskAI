@@ -33,6 +33,15 @@ export const config = {
     voiceId: process.env.VAPI_VOICE_ID || '248be419-c632-4f23-adf1-5324ed7dbf1d',
   },
 
+  // Sarvam (Indian TTS) for the Hindi demo voice - Vapi has no native Sarvam voice, so the Hindi
+  // demo assistant uses Vapi's "custom-voice", which posts each sentence to /voice/sarvam.
+  sarvam: {
+    apiKey: process.env.SARVAM_API_KEY || null,
+    model: process.env.SARVAM_MODEL || 'bulbul:v4-flash',
+    speaker: process.env.SARVAM_SPEAKER || 'ritu_hi_customer',
+    language: process.env.SARVAM_LANGUAGE || 'hi-IN',
+  },
+
   bland: {
     apiKey: process.env.BLAND_API_KEY || null,
     voiceId: process.env.BLAND_VOICE_ID || null,
