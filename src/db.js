@@ -67,6 +67,27 @@ try {
 } catch {
   // already exists
 }
+// Per-stage averages from Vapi's end-of-call report, so a latency change can be traced to the
+// stage it actually moved (model, voice, transcriber or endpointing) instead of only the total.
+for (const col of ['model_ms', 'voice_ms', 'transcriber_ms', 'endpointing_ms']) {
+  try {
+    db.exec(`ALTER TABLE calls ADD COLUMN ${col} INTEGER`);
+  } catch {
+    // already exists
+  }
+}
+// Demo calls (personalised website demos) book fake slots - kept apart from real bookings so a
+// phone-line lookup, cancel or reschedule can never pick one up.
+try {
+  db.exec(`ALTER TABLE bookings ADD COLUMN demo_id TEXT`);
+} catch {
+  // already exists
+}
+try {
+  db.exec(`ALTER TABLE leads ADD COLUMN demo_id TEXT`);
+} catch {
+  // already exists
+}
 
 // Phone numbers arrive in wildly inconsistent formats depending on whether the LLM included
 // a country code, dashes, spaces, etc - a booking stored as "+15551234567" was invisible to a
@@ -80,8 +101,8 @@ export function normalizePhone(phone) {
 // Events for one call arrive from several places (tool calls, status updates, the end-of-call
 // report) in no guaranteed order, so a missing value never overwrites one already stored.
 const upsertCallStmt = db.prepare(`
-  INSERT INTO calls (call_id, agent_id, from_number, to_number, status, started_at, ended_at, disconnection_reason, transcript, recording_url, intent, escalated, avg_response_latency_ms)
-  VALUES (:call_id, :agent_id, :from_number, :to_number, :status, :started_at, :ended_at, :disconnection_reason, :transcript, :recording_url, :intent, :escalated, :avg_response_latency_ms)
+  INSERT INTO calls (call_id, agent_id, from_number, to_number, status, started_at, ended_at, disconnection_reason, transcript, recording_url, intent, escalated, avg_response_latency_ms, model_ms, voice_ms, transcriber_ms, endpointing_ms)
+  VALUES (:call_id, :agent_id, :from_number, :to_number, :status, :started_at, :ended_at, :disconnection_reason, :transcript, :recording_url, :intent, :escalated, :avg_response_latency_ms, :model_ms, :voice_ms, :transcriber_ms, :endpointing_ms)
   ON CONFLICT(call_id) DO UPDATE SET
     agent_id=COALESCE(excluded.agent_id, calls.agent_id),
     from_number=COALESCE(excluded.from_number, calls.from_number),
@@ -94,37 +115,73 @@ const upsertCallStmt = db.prepare(`
     recording_url=COALESCE(excluded.recording_url, calls.recording_url),
     intent=COALESCE(excluded.intent, calls.intent),
     escalated=MAX(calls.escalated, excluded.escalated),
-    avg_response_latency_ms=COALESCE(excluded.avg_response_latency_ms, calls.avg_response_latency_ms)
+    avg_response_latency_ms=COALESCE(excluded.avg_response_latency_ms, calls.avg_response_latency_ms),
+    model_ms=COALESCE(excluded.model_ms, calls.model_ms),
+    voice_ms=COALESCE(excluded.voice_ms, calls.voice_ms),
+    transcriber_ms=COALESCE(excluded.transcriber_ms, calls.transcriber_ms),
+    endpointing_ms=COALESCE(excluded.endpointing_ms, calls.endpointing_ms)
 `);
 
 export function upsertCall(call) {
-  upsertCallStmt.run({ avg_response_latency_ms: null, ...call });
+  upsertCallStmt.run({
+    avg_response_latency_ms: null,
+    model_ms: null,
+    voice_ms: null,
+    transcriber_ms: null,
+    endpointing_ms: null,
+    ...call,
+  });
 }
 
 const insertLeadStmt = db.prepare(`
-  INSERT INTO leads (id, call_id, name, phone, email, treatment_interest, budget, urgency, created_at)
-  VALUES (:id, :call_id, :name, :phone, :email, :treatment_interest, :budget, :urgency, :created_at)
+  INSERT INTO leads (id, call_id, name, phone, email, treatment_interest, budget, urgency, created_at, demo_id)
+  VALUES (:id, :call_id, :name, :phone, :email, :treatment_interest, :budget, :urgency, :created_at, :demo_id)
 `);
 
 export function insertLead(lead) {
-  insertLeadStmt.run(lead);
+  insertLeadStmt.run({ demo_id: null, ...lead });
 }
 
 const insertBookingStmt = db.prepare(`
-  INSERT INTO bookings (id, call_id, external_booking_id, service, name, phone, phone_norm, email, start_time, end_time, status, created_at)
-  VALUES (:id, :call_id, :external_booking_id, :service, :name, :phone, :phone_norm, :email, :start_time, :end_time, :status, :created_at)
+  INSERT INTO bookings (id, call_id, external_booking_id, service, name, phone, phone_norm, email, start_time, end_time, status, created_at, demo_id)
+  VALUES (:id, :call_id, :external_booking_id, :service, :name, :phone, :phone_norm, :email, :start_time, :end_time, :status, :created_at, :demo_id)
 `);
 
 export function insertBooking(booking) {
-  insertBookingStmt.run({ email: null, ...booking, phone_norm: normalizePhone(booking.phone) });
+  insertBookingStmt.run({ email: null, demo_id: null, ...booking, phone_norm: normalizePhone(booking.phone) });
 }
 
-const findLatestBookingByPhoneStmt = db.prepare(`
-  SELECT * FROM bookings WHERE phone_norm = :phone_norm AND status = 'confirmed' ORDER BY created_at DESC LIMIT 1
+// Personalised demo profiles (website -> clinic facts), keyed by a hash of the site's hostname.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS demo_profiles (
+    id TEXT PRIMARY KEY,
+    url TEXT,
+    profile TEXT,
+    created_at INTEGER
+  );
 `);
 
-export function findLatestBookingByPhone(phone) {
-  return findLatestBookingByPhoneStmt.get({ phone_norm: normalizePhone(phone) });
+export function getDemoProfileRow(id) {
+  const row = db.prepare(`SELECT * FROM demo_profiles WHERE id = ?`).get(id);
+  return row ? { ...row, profile: JSON.parse(row.profile) } : null;
+}
+
+export function saveDemoProfileRow({ id, url, profile }) {
+  db.prepare(
+    `INSERT INTO demo_profiles (id, url, profile, created_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET url = excluded.url, profile = excluded.profile, created_at = excluded.created_at`
+  ).run(id, url, JSON.stringify(profile), Date.now());
+}
+
+// Real calls only ever see real bookings, and a demo only sees its own demo's bookings.
+const findLatestBookingByPhoneStmt = db.prepare(`
+  SELECT * FROM bookings
+  WHERE phone_norm = :phone_norm AND status = 'confirmed' AND COALESCE(demo_id, '') = :demo_id
+  ORDER BY created_at DESC LIMIT 1
+`);
+
+export function findLatestBookingByPhone(phone, demoId = null) {
+  return findLatestBookingByPhoneStmt.get({ phone_norm: normalizePhone(phone), demo_id: demoId || '' });
 }
 
 const updateBookingStatusStmt = db.prepare(`UPDATE bookings SET status = :status WHERE id = :id`);
@@ -151,6 +208,13 @@ export function dashboardStats() {
     .get().n;
 
   const avgLatency = db.prepare(`SELECT AVG(avg_response_latency_ms) AS v FROM calls WHERE avg_response_latency_ms IS NOT NULL`).get().v;
+  const stages = db
+    .prepare(
+      `SELECT AVG(model_ms) AS model, AVG(voice_ms) AS voice, AVG(transcriber_ms) AS transcriber, AVG(endpointing_ms) AS endpointing
+       FROM calls WHERE model_ms IS NOT NULL`
+    )
+    .get();
+  const round = (v) => (v == null ? null : Math.round(v));
 
   const pct = (n) => (totalCalls ? Math.round((n / totalCalls) * 1000) / 10 : 0);
 
@@ -164,6 +228,12 @@ export function dashboardStats() {
     callAnswerRate: pct(totalCalls - missed),
     dropOffRate: pct(droppedOff),
     avgResponseLatencyMs: avgLatency ? Math.round(avgLatency) : null,
+    avgStageLatencyMs: {
+      model: round(stages.model),
+      voice: round(stages.voice),
+      transcriber: round(stages.transcriber),
+      endpointing: round(stages.endpointing),
+    },
   };
 }
 

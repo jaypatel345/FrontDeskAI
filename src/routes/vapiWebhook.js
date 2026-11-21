@@ -3,6 +3,8 @@ import { runTool } from '../tools/handlers.js';
 import { upsertCall } from '../db.js';
 import { logCallToCrm } from '../services/crm.js';
 import { getIndustry } from '../industries/registry.js';
+import { prefetchAvailability } from '../services/scheduling.js';
+import { resolveDemo } from '../services/demoProfiles.js';
 
 // Vapi sends everything to one server URL as { message: { type, call, ... } } - tool calls and
 // call lifecycle events alike (https://docs.vapi.ai/server-url/events). Auth is the same
@@ -22,6 +24,25 @@ export function normaliseEndedReason(reason) {
   if (/voicemail/i.test(reason)) return 'voicemail_reached';
   return reason;
 }
+
+// Prompt variables the call was started with. The Upper Layer Studio demo page passes the
+// prospect's demo_id / demo_url this way; Vapi echoes the call's overrides on every webhook.
+export function callVariables(message) {
+  const call = message?.call || {};
+  return {
+    ...(message?.assistant?.variableValues || {}),
+    ...(call.assistantOverrides?.variableValues || {}),
+    ...(call.metadata || {}),
+  };
+}
+
+export function demoIdFromCall(call) {
+  return call?.assistantOverrides?.variableValues?.demo_id || call?.metadata?.demo_id || null;
+}
+
+// Calls to the demo assistant arrive on /webhooks/vapi/demo (its server URL). They always run in
+// demo mode - fake slots, no CRM/SMS - even if the prospect's profile can't be found.
+const isDemoRequest = (req) => req.params?.industry === 'demo';
 
 function resolveVapiIndustry(req, message) {
   const context = {
@@ -43,8 +64,9 @@ function baseCallRow(call, industryId = 'clinic') {
   };
 }
 
-async function handleToolCalls(message, industryKey = 'clinic') {
+async function handleToolCalls(message, industryKey = 'clinic', demoMode = false) {
   const callId = message.call?.id ?? null;
+  const demo = demoMode ? await resolveDemo({ callId, variables: callVariables(message) }) : null;
   const results = await Promise.all(
     (message.toolCallList || []).map(async (toolCall) => {
       const name = toolCall.name ?? toolCall.function?.name;
@@ -56,7 +78,7 @@ async function handleToolCalls(message, industryKey = 'clinic') {
           args = {};
         }
       }
-      const output = await runTool(name, args, { callId, industryKey });
+      const output = await runTool(name, args, { callId, industryKey, demo });
       // Vapi wants `result` as a single-line string; the model reads the JSON just fine.
       return { name, toolCallId: toolCall.id, result: JSON.stringify(output) };
     })
@@ -67,6 +89,8 @@ async function handleToolCalls(message, industryKey = 'clinic') {
 function handleStatusUpdate(message, industryKey = 'clinic') {
   const { call, status } = message;
   if (!call?.id) return;
+  // Warm the calendar cache while the greeting plays (real calls only - demos use fake slots).
+  if (status === 'in-progress' && !demoIdFromCall(call) && industryKey !== 'demo') prefetchAvailability();
   upsertCall({
     ...baseCallRow(call, industryKey),
     status: status === 'in-progress' ? 'in_progress' : status,
@@ -85,7 +109,9 @@ function handleEndOfCallReport(message, industryKey = 'clinic') {
 
   // Vapi's own per-call average of turn latency (caller stops talking -> agent starts), in ms -
   // the number the case study quotes, so take it from Vapi rather than measuring it here.
-  const latency = artifact.performanceMetrics?.turnLatencyAverage;
+  const metrics = artifact.performanceMetrics || {};
+  const latency = metrics.turnLatencyAverage;
+  const ms = (v) => (Number.isFinite(v) ? Math.round(v) : null);
 
   upsertCall({
     ...baseCallRow(call, industryKey),
@@ -95,7 +121,11 @@ function handleEndOfCallReport(message, industryKey = 'clinic') {
     transcript: artifact.transcript || null,
     recording_url: artifact.recording?.mono?.combinedUrl || artifact.recordingUrl || null,
     escalated: disconnection === 'call_transfer' ? 1 : 0,
-    avg_response_latency_ms: Number.isFinite(latency) ? Math.round(latency) : null,
+    avg_response_latency_ms: ms(latency),
+    model_ms: ms(metrics.modelLatencyAverage),
+    voice_ms: ms(metrics.voiceLatencyAverage),
+    transcriber_ms: ms(metrics.transcriberLatencyAverage),
+    endpointing_ms: ms(metrics.endpointingLatencyAverage),
   });
 
   // Not awaited - Vapi doesn't need HubSpot's answer, and a slow CRM shouldn't hold the webhook.
@@ -114,13 +144,14 @@ function handleEndOfCallReport(message, industryKey = 'clinic') {
 
 async function processVapiWebhook(req, res) {
   const message = req.body?.message;
-  const industry = resolveVapiIndustry(req, message);
+  const demoMode = isDemoRequest(req);
+  const industry = demoMode ? { id: 'clinic' } : resolveVapiIndustry(req, message);
 
   switch (message?.type) {
     case 'tool-calls':
-      return res.json(await handleToolCalls(message, industry.id));
+      return res.json(await handleToolCalls(message, industry.id, demoMode));
     case 'status-update':
-      handleStatusUpdate(message, industry.id);
+      handleStatusUpdate(message, demoMode ? 'demo' : industry.id);
       break;
     case 'end-of-call-report':
       handleEndOfCallReport(message, industry.id);

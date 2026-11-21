@@ -47,8 +47,15 @@ export async function embed(text) {
   return res.data[0].embedding;
 }
 
-function keywordSearch(query, topK, kbEntries = localKb) {
-  const terms = query.toLowerCase().split(/\W+/).filter(Boolean);
+const STOPWORDS = new Set(['the', 'and', 'you', 'your', 'how', 'much', 'many', 'what', 'does', 'are', 'for', 'can', 'with', 'have', 'there', 'this', 'that', 'about', 'any', 'get', 'want', 'like', 'would', 'please', 'tell']);
+
+export function keywordSearch(query, topK, kbEntries = localKb) {
+  // Short and filler words match inside unrelated words ("is" in "Invisalign") and outvote the
+  // words that matter, so they don't count.
+  const terms = query
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((t) => t.length >= 3 && !STOPWORDS.has(t));
   const scored = kbEntries.map((entry) => {
     const haystack = entry.text.toLowerCase();
     const score = terms.reduce((acc, t) => acc + (haystack.includes(t) ? 1 : 0), 0);

@@ -28,7 +28,9 @@ redis?.on('connect', () => {
   redisUp = true;
 });
 
-const AVAILABILITY_TTL_SECONDS = 60;
+// Long enough to cover a call from its start (when it's prefetched) to the first availability
+// question; a slot taken meanwhile just fails at booking time and the agent offers another.
+const AVAILABILITY_TTL_SECONDS = 120;
 
 // In-process fallback so availability caching still works even when Redis/Docker isn't
 // running locally — this matters for real latency, not just resilience: without it, every

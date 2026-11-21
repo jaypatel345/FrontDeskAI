@@ -11,7 +11,7 @@ export const searchKnowledgeBaseTool = {
   name: 'search_knowledge_base',
   url: `${base}/functions/search-knowledge-base`,
   description:
-    'Look up clinic info ONLY: services, price RANGES, doctor profiles, hours/location, pre/post-care instructions, general FAQs (pain, recovery, side effects). Does NOT know appointment availability, open slots, or existing bookings - never call this for "can I book", "do you have availability", or anything about scheduling a time. top_k is fixed at 3 server-side to keep latency low.',
+    'Clinic facts only: services, price ranges, doctors, hours, location, aftercare, FAQs. Knows nothing about open times or bookings - never use it for scheduling.',
   speak_during_execution: true,
   execution_message_description: 'Sure thing, let me check that for you right now.',
   // Headroom over the RAG service's own ~4s worst case (live Qdrant+OpenAI mode) so a slow
@@ -32,7 +32,7 @@ export const checkAvailabilityTool = {
   name: 'check_availability',
   url: `${base}/functions/check-availability`,
   description:
-    'THE tool for "can I book", "do you have availability", or scheduling a NEW visit - call this directly, not search_knowledge_base, even before you have the caller\'s phone number (phone is only needed later for book_appointment). Checks open appointment slots for a given service; the search already looks several weeks ahead automatically, so pass your best-guess date_from/date_to and trust the results. Each returned slot has "start" (ISO, pass exactly this back to book_appointment) and "label" (the correct spoken time in the clinic\'s timezone, e.g. "2:30 PM") - always read the label aloud, never compute your own AM/PM conversion from "start".',
+    'Open appointment times for a service - use for any booking or availability question, before you have a phone number. Already searches weeks ahead. Each slot has "start" (pass exactly to book_appointment) and "label" (say this aloud, never convert "start").',
   speak_during_execution: true,
   execution_message_description: "Give me just a second, let me check our latest calendar and find an appointment for you.",
   // Must stay above scheduling.js's own axios timeout (4000ms) to Cal.com, with headroom
@@ -42,8 +42,8 @@ export const checkAvailabilityTool = {
     type: 'object',
     properties: {
       service: { type: 'string', description: 'e.g. Botox, Filler, Laser Hair Removal, HydraFacial' },
-      date_from: { type: 'string', description: 'ISO 8601 datetime to start searching from. Default to now if the patient has no preference.' },
-      date_to: { type: 'string', description: 'ISO 8601 datetime to search up to. Default to 5 days from date_from.' },
+      date_from: { type: 'string', description: 'ISO 8601. Default now.' },
+      date_to: { type: 'string', description: 'ISO 8601. Optional.' },
     },
     required: ['service'],
   },
@@ -55,7 +55,7 @@ export const bookAppointmentTool = {
   name: 'book_appointment',
   url: `${base}/functions/book-appointment`,
   description:
-    'Book a confirmed appointment slot. Only call this after the patient has explicitly agreed to a specific time from check_availability, and you have their name and phone number.',
+    'Book a slot the caller agreed to from check_availability, once you have name, phone and email.',
   speak_during_execution: true,
   execution_message_description: "Awesome, I'm locking that appointment in for you right now.",
   // Above scheduling.js's bookSlot axios timeout (6000ms), with headroom.
@@ -64,10 +64,10 @@ export const bookAppointmentTool = {
     type: 'object',
     properties: {
       service: { type: 'string' },
-      start_time: { type: 'string', description: 'The exact "start" ISO value the patient agreed to from check_availability - copy it exactly, do not reformat it.' },
+      start_time: { type: 'string', description: 'Exact "start" value from check_availability.' },
       name: { type: 'string' },
       phone: { type: 'string', description: 'Phone number in E.164 format if possible.' },
-      email: { type: 'string', description: 'Required - the booking system needs a real email to send the confirmation to. Ask for it if not already given.' },
+      email: { type: 'string', description: 'Required. Ask for it.' },
     },
     required: ['service', 'start_time', 'name', 'phone', 'email'],
   },
@@ -79,7 +79,7 @@ export const captureLeadTool = {
   name: 'capture_lead',
   url: `${base}/functions/capture-lead`,
   description:
-    'Save lead/qualification details as soon as you learn them, even if the patient has not booked yet — this ensures follow-up happens. Call again to update as you learn more.',
+    'Save lead details as soon as you learn any, even before booking. Call again as you learn more.',
   speak_during_execution: false,
   timeout_ms: 3000,
   parameters: {
@@ -89,7 +89,7 @@ export const captureLeadTool = {
       phone: { type: 'string' },
       email: { type: 'string' },
       treatment_interest: { type: 'string' },
-      budget: { type: 'string', description: 'Loose budget signal if volunteered, e.g. "under $500". Never pressure for this.' },
+      budget: { type: 'string', description: 'Only if volunteered.' },
       urgency: { type: 'string', description: 'e.g. "this week", "just researching", "event in 2 weeks"' },
     },
     required: [],
@@ -102,14 +102,14 @@ export const lookupAppointmentTool = {
   name: 'lookup_appointment',
   url: `${base}/functions/lookup-appointment`,
   description:
-    "Look up an appointment the caller EXPLICITLY says they already made (e.g. \"find my appointment\", \"do I have a booking\"). Do NOT call this just because you collected a phone number - collecting phone is also a normal step of booking a brand-new appointment, which needs check_availability + book_appointment instead, not this.",
+    "Find an appointment the caller says they already have. Not part of booking a new one.",
   speak_during_execution: true,
   execution_message_description: 'Let me pull up your appointment details.',
   timeout_ms: 5000,
   parameters: {
     type: 'object',
     properties: {
-      phone: { type: 'string', description: 'Phone number the original booking was made under.' },
+      phone: { type: 'string', description: 'Phone the booking is under.' },
     },
     required: ['phone'],
   },
@@ -129,7 +129,7 @@ export const cancelAppointmentTool = {
   parameters: {
     type: 'object',
     properties: {
-      phone: { type: 'string', description: 'Phone number the original booking was made under.' },
+      phone: { type: 'string', description: 'Phone the booking is under.' },
     },
     required: ['phone'],
   },
@@ -141,7 +141,7 @@ export const rescheduleAppointmentTool = {
   name: 'reschedule_appointment',
   url: `${base}/functions/reschedule-appointment`,
   description:
-    "Move the caller's existing appointment to a new time. Use check_availability first to find a new slot, confirm it out loud, then call this.",
+    "Move an existing appointment to a new slot from check_availability, after confirming it out loud.",
   speak_during_execution: true,
   execution_message_description: "I'm rescheduling that for you right now.",
   // This tool runs cancel then book SEQUENTIALLY server-side (see reschedule-appointment in
@@ -151,8 +151,8 @@ export const rescheduleAppointmentTool = {
   parameters: {
     type: 'object',
     properties: {
-      phone: { type: 'string', description: 'Phone number the original booking was made under.' },
-      new_start_time: { type: 'string', description: 'The exact "start" ISO value from check_availability for the slot the patient agreed to - copy it exactly, do not reformat it.' },
+      phone: { type: 'string', description: 'Phone the booking is under.' },
+      new_start_time: { type: 'string', description: 'Exact "start" value from check_availability.' },
     },
     required: ['phone', 'new_start_time'],
   },
@@ -164,7 +164,7 @@ export const updateAppointmentDetailsTool = {
   name: 'update_appointment_details',
   url: `${base}/functions/update-appointment-details`,
   description:
-    "Fix/correct the name, email, or phone number on an appointment that was just booked or already exists - e.g. the caller misspoke their email and wants it corrected. Do NOT call book_appointment again for this (it will fail - the slot is already taken by their own booking). The appointment time does not change.",
+    "Correct the name, email or phone on an existing booking. Never call book_appointment again for this. Time stays the same.",
   speak_during_execution: true,
   execution_message_description: "I'm updating that now.",
   // Same cancel-then-rebook pattern as reschedule - needs the same generous headroom.

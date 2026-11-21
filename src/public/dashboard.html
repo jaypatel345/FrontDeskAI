@@ -305,6 +305,22 @@ function escalatedPill(v) {
 
 const PHONE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>';
 
+// Where the average turn time goes (Vapi end-of-call report), so a latency change can be traced
+// to the stage it moved.
+function stageStat(s) {
+  if (!s || s.model == null) return '';
+  return stat('Latency by stage', `<span class="mono" style="font-size:0.8em">LLM ${s.model} · voice ${s.voice} · STT ${s.transcriber} · end ${s.endpointing} ms</span>`);
+}
+
+function latencyCell(c) {
+  if (c.avg_response_latency_ms == null) return '—';
+  const total = (c.avg_response_latency_ms / 1000).toFixed(2) + 's';
+  const parts = c.model_ms != null
+    ? `LLM ${c.model_ms} · voice ${c.voice_ms} · STT ${c.transcriber_ms} · end ${c.endpointing_ms} ms`
+    : '';
+  return `<span title="${parts}">${total}</span>${parts ? `<div class="mono" style="font-size:0.75em;opacity:0.7">${parts}</div>` : ''}`;
+}
+
 function stat(label, value) {
   return `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`;
 }
@@ -321,7 +337,8 @@ async function refresh() {
     stat('Drop-off rate', stats.dropOffRate + '%') +
     stat('Escalation rate', stats.escalationRate + '%') +
     stat('Missed calls', stats.missed) +
-    stat('Avg response latency', latency);
+    stat('Avg response latency', latency) +
+    stageStat(stats.avgStageLatencyMs);
 
   const days = stats.dailyCalls || [];
   const max = Math.max(1, ...days.map(d => d.count));
@@ -365,7 +382,7 @@ function callsTable(calls) {
   return `
     <div class="table-wrap">
     <table class="calls">
-      <thead><tr><th>Caller</th><th>Call ID</th><th>Status</th><th>Started</th><th>Outcome</th></tr></thead>
+      <thead><tr><th>Caller</th><th>Call ID</th><th>Status</th><th>Started</th><th>Latency</th><th>Outcome</th></tr></thead>
       <tbody>
         ${calls.map(c => `
           <tr>
@@ -373,6 +390,7 @@ function callsTable(calls) {
             <td class="mono" title="${esc(c.call_id)}">${esc(c.call_id.slice(0, 14))}${c.call_id.length > 14 ? '…' : ''}</td>
             <td>${c.status ? esc(c.status.replace(/_/g, ' ')) : '—'}</td>
             <td class="mono">${c.started_at ? new Date(c.started_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td>
+            <td class="mono">${latencyCell(c)}</td>
             <td>${escalatedPill(c.escalated)}</td>
           </tr>
         `).join('')}

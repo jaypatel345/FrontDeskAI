@@ -85,13 +85,14 @@ describe('Vapi call events', () => {
       type: 'end-of-call-report',
       endedReason: 'customer-ended-call',
       call: { id: 'vapi-call-6', endedAt: new Date().toISOString() },
-      artifact: { transcript: 'AI: Hi. User: Bye.', recordingUrl: 'https://example.org/rec.wav', performanceMetrics: { turnLatencyAverage: 812.4 } },
+      artifact: { transcript: 'AI: Hi. User: Bye.', recordingUrl: 'https://example.org/rec.wav', performanceMetrics: { turnLatencyAverage: 812.4, modelLatencyAverage: 301.6, voiceLatencyAverage: 180.2, transcriberLatencyAverage: 120, endpointingLatencyAverage: 150.4 } },
     });
     const call = findCall('vapi-call-6');
     assert.equal(call.status, 'ended');
     assert.equal(call.disconnection_reason, 'user_hangup');
     assert.equal(call.transcript, 'AI: Hi. User: Bye.');
     assert.equal(call.avg_response_latency_ms, 812);
+    assert.deepEqual([call.model_ms, call.voice_ms, call.transcriber_ms, call.endpointing_ms], [302, 180, 120, 150]);
     assert.equal(call.from_number, '+15552010066', 'a later event without the number must not erase it');
   });
 
@@ -157,5 +158,21 @@ describe('Vapi assistant config', () => {
 
   test('prompt grounds "today" in the clinic timezone', () => {
     assert.match(assistant.model.messages[0].content, /\{\{"now" \| date: .*America\/Los_Angeles"\}\}/);
+  });
+
+  test('endpointing and VAD are tuned for low latency', () => {
+    assert.deepEqual(assistant.startSpeakingPlan, {
+      waitSeconds: 0.1,
+      transcriptionEndpointingPlan: {
+        onPunctuationSeconds: 0.18,
+        onNoPunctuationSeconds: 0.35,
+        onNumberSeconds: 0.4,
+      },
+    });
+    assert.deepEqual(assistant.stopSpeakingPlan, {
+      numWords: 1,
+      voiceSeconds: 0.2,
+      backoffSeconds: 1,
+    });
   });
 });

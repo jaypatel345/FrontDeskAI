@@ -21,7 +21,10 @@
     "seed:kb": "node kb/seed.js",
     "switch:phone": "node scripts/switchPhone.js",
     "setup:hubspot": "node scripts/setupHubspotProperties.js",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "latency": "node scripts/latencyReport.js",
+    "bench:models": "node scripts/modelBench.js",
+    "setup:vapi:demo": "node vapi/setupAssistant.js demo"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.11.0",

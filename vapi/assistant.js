@@ -1,5 +1,5 @@
 import { config } from '../src/config.js';
-import { receptionistPrompt, firstMessage } from '../agent/receptionistPrompt.js';
+import { receptionistPrompt, firstMessage, clinicPrompt } from '../agent/receptionistPrompt.js';
 import { getIndustry } from '../src/industries/registry.js';
 import {
   searchKnowledgeBaseTool,
@@ -67,11 +67,9 @@ export function buildTools(serverUrl = defaultServerUrl) {
 export const tools = buildTools(defaultServerUrl);
 
 const vapiAddendum = `
-## Transfers & Escalations
-- For an upset caller, an explicit request for a person, or complex questions:
-  Since this demo telephony line cannot dial international numbers (+91) directly, do NOT crash the call with transferCall if the transfer number is international or fails. Instead, warmly say: "Our front desk team is currently assisting other guests. I can take down your name and number for an immediate callback, or I would be happy to help get you scheduled on our calendar right now — which would you prefer?"
-- Only invoke transferCall if you are on a compatible domestic line where live transfers are supported.
-- When the caller's request is fully handled and they have nothing else, say a warm goodbye and use endCall.
+## Transfers
+- Only use transferCall on a domestic line that supports it. Otherwise (or if it fails) offer a callback or to book them now.
+- When the caller has nothing else, say a warm goodbye and use endCall.
 `;
 
 export function getVapiAssistant(industryKey = 'clinic') {
@@ -92,7 +90,7 @@ export function getVapiAssistant(industryKey = 'clinic') {
     model: {
       provider: config.vapi.modelProvider,
       model: config.vapi.model,
-      temperature: 0.7,
+      temperature: 0.4,
       messages: [
         {
           role: 'system',
@@ -114,12 +112,12 @@ export function getVapiAssistant(industryKey = 'clinic') {
     },
     transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
     startSpeakingPlan: {
-      waitSeconds: 0.3,
-      transcriptionEndpointingPlan: { onPunctuationSeconds: 0.25, onNoPunctuationSeconds: 1.0, onNumberSeconds: 0.7 },
+      waitSeconds: 0.1,
+      transcriptionEndpointingPlan: { onPunctuationSeconds: 0.18, onNoPunctuationSeconds: 0.35, onNumberSeconds: 0.4 },
     },
     stopSpeakingPlan: {
-      numWords: 2,
-      voiceSeconds: 0.3,
+      numWords: 1,
+      voiceSeconds: 0.2,
       backoffSeconds: 1,
     },
     server: { url: serverUrl, headers, timeoutSeconds: 20 },
@@ -137,7 +135,7 @@ export const assistant = {
   model: {
     provider: config.vapi.modelProvider,
     model: config.vapi.model,
-    temperature: 0.7,
+    temperature: 0.4,
     messages: [
       {
         role: 'system',
@@ -160,12 +158,12 @@ export const assistant = {
   },
   transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
   startSpeakingPlan: {
-    waitSeconds: 0.3,
-    transcriptionEndpointingPlan: { onPunctuationSeconds: 0.25, onNoPunctuationSeconds: 1.0, onNumberSeconds: 0.7 },
+    waitSeconds: 0.1,
+    transcriptionEndpointingPlan: { onPunctuationSeconds: 0.18, onNoPunctuationSeconds: 0.35, onNumberSeconds: 0.4 },
   },
   stopSpeakingPlan: {
-    numWords: 2,
-    voiceSeconds: 0.3,
+    numWords: 1,
+    voiceSeconds: 0.2,
     backoffSeconds: 1,
   },
   server: { url: defaultServerUrl, headers, timeoutSeconds: 20 },
@@ -174,3 +172,52 @@ export const assistant = {
   maxDurationSeconds: 15 * 60,
 };
 
+
+// ---------- Personalised website demo assistant ----------
+// One assistant for every prospect: the Upper Layer Studio demo page starts it with
+// variableValues from FrontDesk's /demo/profiles API (clinic name, services, prices, hours...).
+// Its server URL is /webhooks/vapi/demo, so its tools always run in demo mode: that clinic's own
+// knowledge base, fake calendar slots, nothing sent to Cal.com, HubSpot or SMS.
+const demoFacts = `
+Facts from {{clinic_name}}'s own website: {{clinic_facts}}
+Lead doctor: {{doctor}}. Prices are in {{currency}}; if a price isn't in these facts or search_knowledge_base, say it's confirmed at the consultation.
+Reply in {{language}} unless the caller speaks another language, then match theirs.
+`;
+
+export function getVapiDemoAssistant() {
+  const serverUrl = `${config.baseUrl}/webhooks/vapi/demo`;
+  return {
+    name: 'FrontDesk Demo Receptionist',
+    firstMessage: 'Hello! Thanks for calling {{clinic_name}}. This is Ava, how can I help you today?',
+    firstMessageMode: 'assistant-speaks-first',
+    model: {
+      provider: config.vapi.modelProvider,
+      model: config.vapi.model,
+      temperature: 0.4,
+      messages: [
+        {
+          role: 'system',
+          content:
+            clinicPrompt({
+              persona: 'Ava',
+              clinicName: '{{clinic_name}}',
+              clinicLocation: '{{city}}',
+              kind: '{{niche}}',
+              currentTime: '{{"now" | date: "%A, %B %d, %Y, %I:%M %p", timezone}}',
+              isDemo: true,
+              extraFacts: demoFacts,
+            }) + '\nWhen the caller has nothing else, say a warm goodbye and use endCall.\n',
+        },
+      ],
+      tools: buildTools(serverUrl).filter((t) => t.type !== 'transferCall'),
+    },
+    voice: assistant.voice,
+    transcriber: assistant.transcriber,
+    startSpeakingPlan: assistant.startSpeakingPlan,
+    stopSpeakingPlan: assistant.stopSpeakingPlan,
+    server: { url: serverUrl, headers, timeoutSeconds: 20 },
+    serverMessages: ['status-update', 'end-of-call-report'],
+    artifactPlan: { recordingEnabled: true },
+    maxDurationSeconds: 10 * 60,
+  };
+}

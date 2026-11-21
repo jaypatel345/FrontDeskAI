@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { prefetchAvailability } from '../services/scheduling.js';
 import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { upsertCall } from '../db.js';
@@ -62,6 +63,7 @@ retellWebhookRouter.post('/:industry?', (req, res) => {
     avg_response_latency_ms: avgLatencyMs,
   });
 
+  if (event === 'call_started') prefetchAvailability();
   console.log(`[retell-webhook] ${event} for call ${call.call_id}`);
   res.sendStatus(200);
 });
