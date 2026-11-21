@@ -34,6 +34,19 @@ function toVapiTool(retellTool, serverUrl = defaultServerUrl) {
   };
 }
 
+// The voice callers hear everywhere (phone line, Vapi dashboard tests, website demos): the same
+// settings the Upper Layer Studio demo page uses - Cartesia's default model for this voice, no
+// filler words injected.
+export const voice = {
+  provider: config.vapi.voiceProvider,
+  voiceId: config.vapi.voiceId,
+  ...(config.vapi.voiceProvider === 'cartesia'
+    ? { fillerInjectionEnabled: false }
+    : config.vapi.voiceProvider === '11labs'
+    ? { model: 'eleven_flash_v2_5', stability: 0.45, similarityBoost: 0.75, style: 0.2, speed: 0.98 }
+    : {}),
+};
+
 // Turn-taking. A fixed 0.35s silence rule was fast but cut callers off mid-dictation ("my email is
 // jay patel ... 2 1 0 7 7 6 at gmail") and the agent answered half an email. Smart endpointing
 // reads whether the sentence sounds finished: quick after a complete answer, patient while someone
@@ -119,15 +132,7 @@ export function getVapiAssistant(industryKey = 'clinic') {
       ],
       tools: assistantTools,
     },
-    voice: {
-      provider: config.vapi.voiceProvider,
-      voiceId: config.vapi.voiceId,
-      ...(config.vapi.voiceProvider === 'cartesia'
-        ? { model: 'sonic-3.5' }
-        : config.vapi.voiceProvider === '11labs'
-        ? { model: 'eleven_flash_v2_5', stability: 0.45, similarityBoost: 0.75, style: 0.2, speed: 0.98 }
-        : {}),
-    },
+    voice,
     transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
     startSpeakingPlan,
     stopSpeakingPlan,
@@ -158,15 +163,7 @@ export const assistant = {
     ],
     tools,
   },
-  voice: {
-    provider: config.vapi.voiceProvider,
-    voiceId: config.vapi.voiceId,
-    ...(config.vapi.voiceProvider === 'cartesia'
-      ? { model: 'sonic-3.5' }
-      : config.vapi.voiceProvider === '11labs'
-      ? { model: 'eleven_flash_v2_5', stability: 0.45, similarityBoost: 0.75, style: 0.2, speed: 0.98 }
-      : {}),
-  },
+  voice,
   transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
   startSpeakingPlan,
   stopSpeakingPlan,

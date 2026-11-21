@@ -167,3 +167,14 @@ describe('Vapi assistant config', () => {
     assert.equal(assistant.stopSpeakingPlan.numWords, 2);
   });
 });
+
+describe('voice', () => {
+  test('phone line and website demo use the same voice settings', async () => {
+    const { getVapiDemoAssistant } = await import('../vapi/assistant.js');
+    assert.deepEqual(assistant.voice, getVapiDemoAssistant().voice);
+    if (assistant.voice.provider === 'cartesia') {
+      assert.equal(assistant.voice.model, undefined, 'no model pin - same as the demo page');
+      assert.equal(assistant.voice.fillerInjectionEnabled, false);
+    }
+  });
+});
