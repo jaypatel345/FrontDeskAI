@@ -32,6 +32,16 @@ const isoDateTime = z
 
 // A minute of slack so a slot that started while the caller was saying "yes" isn't rejected.
 // (An unparseable value already failed above, so it passes here to avoid a second, confusing error.)
+// For search windows a bare date ("2026-11-23") is fine - LLMs often send one, and rejecting it
+// cost a whole extra tool round trip while the caller waited. Start of day for date_from, end of
+// day for date_to.
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const searchDate = (endOfDay) =>
+  z.preprocess(
+    (v) => (typeof v === 'string' && DATE_ONLY.test(v.trim()) ? `${v.trim()}T${endOfDay ? '23:59:59' : '00:00:00'}Z` : v),
+    isoDateTime
+  );
+
 const futureDateTime = isoDateTime.refine((v) => Number.isNaN(Date.parse(v)) || Date.parse(v) > Date.now() - 60 * 1000, {
   message: 'is in the past - pick a time from check_availability',
 });
@@ -86,8 +96,8 @@ export function buildSchemas(industryKey = 'clinic') {
   return {
     checkAvailability: z.object({
       service,
-      date_from: optional(isoDateTime),
-      date_to: optional(isoDateTime),
+      date_from: optional(searchDate(false)),
+      date_to: optional(searchDate(true)),
       industry: optional(shortText),
     }),
     bookAppointment: z.object({

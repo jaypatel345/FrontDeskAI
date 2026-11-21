@@ -66,6 +66,8 @@ export async function getOrBuildDemoProfile({ url, id, overrides = {} } = {}) {
         try {
           profile = await buildSiteProfile(url);
         } catch (e) {
+          // A refused address is the caller's mistake (or abuse) - don't save anything for it.
+          if (/not allowed|unsupported|only http/i.test(e.message)) throw e;
           error = e.message;
           profile = fallbackProfile({ url, ...overrides });
         }

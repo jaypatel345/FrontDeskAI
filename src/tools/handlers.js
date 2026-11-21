@@ -34,6 +34,25 @@ export function searchWindowEnd(dateFrom, dateTo) {
   return dateTo && Date.parse(dateTo) > Date.parse(minDateTo) ? dateTo : minDateTo;
 }
 
+// Three options across different days (the agent offers two): the raw list is often four
+// back-to-back half hours on the same evening, which is a poor choice to read out.
+export function pickSpreadSlots(slots, max = 3) {
+  const picked = [];
+  const days = new Set();
+  for (const slot of slots) {
+    const day = String(slot.start).slice(0, 10);
+    if (days.has(day)) continue;
+    days.add(day);
+    picked.push(slot);
+    if (picked.length === max) return picked;
+  }
+  for (const slot of slots) {
+    if (picked.length === max) break;
+    if (!picked.includes(slot)) picked.push(slot);
+  }
+  return picked.sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+}
+
 const spokenTime = (iso, dateStyle = 'medium', tz = config.clinicTimezone) =>
   new Date(iso).toLocaleString('en-US', { dateStyle, timeStyle: 'short', timeZone: tz });
 
@@ -54,7 +73,7 @@ export const tools = {
         mock: Boolean(demo),
         timeZone: industry?.timezone || config.clinicTimezone,
       });
-      return { available: slots.length > 0, slots: slots.slice(0, 4) };
+      return { available: slots.length > 0, slots: pickSpreadSlots(slots) };
     },
   },
 

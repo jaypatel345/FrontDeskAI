@@ -31,6 +31,7 @@ export function callVariables(message) {
   const call = message?.call || {};
   return {
     ...(message?.assistant?.variableValues || {}),
+    ...(message?.chat?.assistantOverrides?.variableValues || {}),
     ...(call.assistantOverrides?.variableValues || {}),
     ...(call.metadata || {}),
   };

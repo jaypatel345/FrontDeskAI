@@ -62,8 +62,11 @@ describe('website -> demo profile', () => {
 });
 
 describe('demo API', () => {
-  test('needs a url', async () => {
+  test('needs a url, and refuses private addresses without saving anything', async () => {
     assert.equal((await request(app).post('/demo/profiles').send({})).status, 400);
+    const res = await request(app).post('/demo/profiles').send({ url: 'http://169.254.169.254/latest' });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /not allowed/);
   });
 
   test('CORS only for the demo page origins', async () => {
@@ -132,5 +135,24 @@ describe('demo assistant calls', () => {
     assert.match(a.server.url, /\/webhooks\/vapi\/demo$/);
     assert.ok(!a.model.tools.some((t) => t.type === 'transferCall'));
     assert.match(a.model.messages[0].content, /\{\{clinic_facts\}\}/);
+  });
+});
+
+describe('availability answers', () => {
+  test('a bare date for the search window is accepted, not bounced back to the agent', async () => {
+    const res = await request(app)
+      .post('/webhooks/vapi/demo')
+      .set('x-functions-secret', process.env.FUNCTIONS_SECRET)
+      .send({ message: { type: 'tool-calls', call: { id: 'demo-3' }, toolCallList: [{ id: 'a', name: 'check_availability', parameters: { service: 'Botox', date_from: '2030-01-07', date_to: '2030-01-10' } }] } });
+    const result = JSON.parse(res.body.results[0].result);
+    assert.equal(result.error, undefined);
+    assert.equal(result.available, true);
+  });
+
+  test('offers times on different days rather than back-to-back slots', async () => {
+    const { pickSpreadSlots } = await import('../src/tools/handlers.js');
+    const slots = ['2030-01-07T19:30:00Z', '2030-01-07T20:00:00Z', '2030-01-07T20:30:00Z', '2030-01-08T19:30:00Z', '2030-01-09T19:30:00Z'].map((start) => ({ start }));
+    assert.deepEqual(pickSpreadSlots(slots).map((s) => s.start), ['2030-01-07T19:30:00Z', '2030-01-08T19:30:00Z', '2030-01-09T19:30:00Z']);
+    assert.equal(pickSpreadSlots(slots.slice(0, 2)).length, 2);
   });
 });
