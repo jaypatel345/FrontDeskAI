@@ -34,6 +34,24 @@ function toVapiTool(retellTool, serverUrl = defaultServerUrl) {
   };
 }
 
+// Turn-taking. A fixed 0.35s silence rule was fast but cut callers off mid-dictation ("my email is
+// jay patel ... 2 1 0 7 7 6 at gmail") and the agent answered half an email. Smart endpointing
+// reads whether the sentence sounds finished: quick after a complete answer, patient while someone
+// is still reading out an email or phone number. The transcription rule is the fallback.
+export const startSpeakingPlan = {
+  waitSeconds: 0.3,
+  smartEndpointingPlan: { provider: 'vapi' },
+  transcriptionEndpointingPlan: { onPunctuationSeconds: 0.2, onNoPunctuationSeconds: 1.0, onNumberSeconds: 0.8 },
+};
+
+// One word ("okay") was enough to cut the agent off mid-sentence; two words and 0.3s of speech
+// lets a caller still interrupt without every acknowledgement doing it.
+export const stopSpeakingPlan = {
+  numWords: 2,
+  voiceSeconds: 0.3,
+  backoffSeconds: 1,
+};
+
 export function buildTools(serverUrl = defaultServerUrl) {
   const list = [
     searchKnowledgeBaseTool,
@@ -111,15 +129,8 @@ export function getVapiAssistant(industryKey = 'clinic') {
         : {}),
     },
     transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
-    startSpeakingPlan: {
-      waitSeconds: 0.1,
-      transcriptionEndpointingPlan: { onPunctuationSeconds: 0.18, onNoPunctuationSeconds: 0.35, onNumberSeconds: 0.4 },
-    },
-    stopSpeakingPlan: {
-      numWords: 1,
-      voiceSeconds: 0.2,
-      backoffSeconds: 1,
-    },
+    startSpeakingPlan,
+    stopSpeakingPlan,
     server: { url: serverUrl, headers, timeoutSeconds: 20 },
     serverMessages: ['status-update', 'end-of-call-report'],
     artifactPlan: { recordingEnabled: true },
@@ -157,15 +168,8 @@ export const assistant = {
       : {}),
   },
   transcriber: { provider: 'deepgram', model: 'nova-3', language: 'en' },
-  startSpeakingPlan: {
-    waitSeconds: 0.1,
-    transcriptionEndpointingPlan: { onPunctuationSeconds: 0.18, onNoPunctuationSeconds: 0.35, onNumberSeconds: 0.4 },
-  },
-  stopSpeakingPlan: {
-    numWords: 1,
-    voiceSeconds: 0.2,
-    backoffSeconds: 1,
-  },
+  startSpeakingPlan,
+  stopSpeakingPlan,
   server: { url: defaultServerUrl, headers, timeoutSeconds: 20 },
   serverMessages: ['status-update', 'end-of-call-report'],
   artifactPlan: { recordingEnabled: true },
@@ -179,16 +183,16 @@ export const assistant = {
 // Its server URL is /webhooks/vapi/demo, so its tools always run in demo mode: that clinic's own
 // knowledge base, fake calendar slots, nothing sent to Cal.com, HubSpot or SMS.
 const demoFacts = `
-Facts from {{clinic_name}}'s own website: {{clinic_facts}}
-Lead doctor: {{doctor}}. Prices are in {{currency}}; if a price isn't in these facts or search_knowledge_base, say it's confirmed at the consultation.
-Reply in {{language}} unless the caller speaks another language, then match theirs.
+Facts from the clinic's own website: {{ clinic_facts | default: "none loaded - use search_knowledge_base" }}
+Lead doctor: {{ doctor | default: "our doctor" }}. Prices are in {{ currency | default: "USD" }}; if a price isn't in these facts or search_knowledge_base, say it's confirmed at the consultation.
+Reply in {{ language | default: "English" }} unless the caller speaks another language, then match theirs.
 `;
 
 export function getVapiDemoAssistant() {
   const serverUrl = `${config.baseUrl}/webhooks/vapi/demo`;
   return {
     name: 'FrontDesk Demo Receptionist',
-    firstMessage: 'Hello! Thanks for calling {{clinic_name}}. This is Ava, how can I help you today?',
+    firstMessage: 'Hello! Thanks for calling {{ clinic_name | default: "Demo Smile Clinic" }}. This is Ava, how can I help you today?',
     firstMessageMode: 'assistant-speaks-first',
     model: {
       provider: config.vapi.modelProvider,
@@ -200,10 +204,11 @@ export function getVapiDemoAssistant() {
           content:
             clinicPrompt({
               persona: 'Ava',
-              clinicName: '{{clinic_name}}',
-              clinicLocation: '{{city}}',
-              kind: '{{niche}}',
-              currentTime: '{{"now" | date: "%A, %B %d, %Y, %I:%M %p", timezone}}',
+              // Defaults keep it sensible when started without variables (e.g. a Vapi dashboard test).
+              clinicName: '{{ clinic_name | default: "Demo Smile Clinic" }}',
+              clinicLocation: '{{ city | default: "town" }}',
+              kind: '{{ niche | default: "clinic" }}',
+              currentTime: '{{"now" | date: "%A, %B %d, %Y, %I:%M %p", timezone | default: "UTC"}}',
               isDemo: true,
               extraFacts: demoFacts,
             }) + '\nWhen the caller has nothing else, say a warm goodbye and use endCall.\n',

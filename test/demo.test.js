@@ -134,7 +134,7 @@ describe('demo assistant calls', () => {
     const a = getVapiDemoAssistant();
     assert.match(a.server.url, /\/webhooks\/vapi\/demo$/);
     assert.ok(!a.model.tools.some((t) => t.type === 'transferCall'));
-    assert.match(a.model.messages[0].content, /\{\{clinic_facts\}\}/);
+    assert.match(a.model.messages[0].content, /\{\{ clinic_facts \| default:/);
   });
 });
 
@@ -154,5 +154,26 @@ describe('availability answers', () => {
     const slots = ['2030-01-07T19:30:00Z', '2030-01-07T20:00:00Z', '2030-01-07T20:30:00Z', '2030-01-08T19:30:00Z', '2030-01-09T19:30:00Z'].map((start) => ({ start }));
     assert.deepEqual(pickSpreadSlots(slots).map((s) => s.start), ['2030-01-07T19:30:00Z', '2030-01-08T19:30:00Z', '2030-01-09T19:30:00Z']);
     assert.equal(pickSpreadSlots(slots.slice(0, 2)).length, 2);
+  });
+});
+
+describe('spoken email addresses', () => {
+  test('a dictated email is joined into a real one, keeping whole words', async () => {
+    const { normalizeSpokenEmail } = await import('../src/validation/toolArgs.js');
+    assert.equal(normalizeSpokenEmail('Jay Patel 2 1 0 7 7 6 at the rate Gmail dot com'), 'jaypatel210776@gmail.com');
+    assert.equal(normalizeSpokenEmail('jay patel 210776 at gmail'), 'jaypatel210776@gmail.com');
+    assert.equal(normalizeSpokenEmail('john dot smith at outlook dot com'), 'john.smith@outlook.com');
+    assert.equal(normalizeSpokenEmail('priya double 7 at yahoo dot co dot in'), 'priya77@yahoo.co.in');
+    assert.equal(normalizeSpokenEmail('Sara.Lee@Clinic.ae'), 'sara.lee@clinic.ae');
+  });
+
+  test('booking accepts the email as the agent heard it', async () => {
+    const res = await request(app)
+      .post('/webhooks/vapi/demo')
+      .set('x-functions-secret', process.env.FUNCTIONS_SECRET)
+      .send({ message: { type: 'tool-calls', call: { id: 'demo-email' }, toolCallList: [{ id: 'a', name: 'book_appointment', parameters: { service: 'Consultation', start_time: '2030-01-07T17:00:00Z', name: 'Jay Patel', phone: '+971501234567', email: 'jay patel 2 1 0 7 7 6 at gmail dot com' } }] } });
+    const result = JSON.parse(res.body.results[0].result);
+    assert.equal(result.success, true, result.error);
+    assert.equal(db.prepare(`SELECT email FROM bookings WHERE call_id = 'demo-email'`).get().email, 'jaypatel210776@gmail.com');
   });
 });

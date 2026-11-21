@@ -53,7 +53,7 @@ describe('tool argument validation', () => {
   // Each case: [what's wrong, args override, text the agent should get back]
   const cases = [
     ['missing email', { email: undefined }, /email is required - ask the caller/],
-    ['bad email', { email: 'jane at gmail' }, /email doesn't look like a valid email/],
+    ['bad email', { email: 'jane smith' }, /email doesn't look like a valid email/],
     ['short phone', { phone: '555-1234' }, /phone doesn't look like a full phone number/],
     ['unknown service', { service: 'tattoo removal' }, /isn't a service the clinic offers/],
     ['non-ISO date', { start_time: 'next tuesday at 2' }, /start_time must be an ISO 8601 date-time/],

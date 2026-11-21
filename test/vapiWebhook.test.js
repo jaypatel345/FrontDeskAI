@@ -160,19 +160,10 @@ describe('Vapi assistant config', () => {
     assert.match(assistant.model.messages[0].content, /\{\{"now" \| date: .*America\/Los_Angeles"\}\}/);
   });
 
-  test('endpointing and VAD are tuned for low latency', () => {
-    assert.deepEqual(assistant.startSpeakingPlan, {
-      waitSeconds: 0.1,
-      transcriptionEndpointingPlan: {
-        onPunctuationSeconds: 0.18,
-        onNoPunctuationSeconds: 0.35,
-        onNumberSeconds: 0.4,
-      },
-    });
-    assert.deepEqual(assistant.stopSpeakingPlan, {
-      numWords: 1,
-      voiceSeconds: 0.2,
-      backoffSeconds: 1,
-    });
+  test('turn-taking waits for callers to finish dictating, and one "okay" does not interrupt', () => {
+    assert.deepEqual(assistant.startSpeakingPlan.smartEndpointingPlan, { provider: 'vapi' });
+    assert.ok(assistant.startSpeakingPlan.transcriptionEndpointingPlan.onNoPunctuationSeconds >= 1);
+    assert.ok(assistant.startSpeakingPlan.transcriptionEndpointingPlan.onNumberSeconds >= 0.8);
+    assert.equal(assistant.stopSpeakingPlan.numWords, 2);
   });
 });

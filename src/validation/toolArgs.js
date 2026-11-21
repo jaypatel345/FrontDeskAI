@@ -57,10 +57,32 @@ const phone = z
     return e164;
   });
 
-const email = z
-  .string({ required_error: 'is required - ask the caller for an email address to send their confirmation to' })
-  .trim()
-  .email("doesn't look like a valid email - spell it back to the caller letter by letter and confirm");
+const DIGIT_WORDS = { zero: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6', seven: '7', eight: '8', nine: '9' };
+const FREE_MAIL = /^(gmail|googlemail|yahoo|hotmail|outlook|icloud|live|aol|proton|protonmail|rediffmail)$/;
+
+// Turns a spoken email into a real one, in case the agent passes it on as heard:
+// "Jay Patel 2 1 0 7 7 6 at the rate gmail dot com" -> "jaypatel210776@gmail.com".
+export function normalizeSpokenEmail(input) {
+  let v = String(input).trim().toLowerCase();
+  if (!v) return v;
+  v = v
+    .replace(/\s+at\s+the\s+rate(\s+of)?\s+/g, ' @ ')
+    .replace(/\s+dot\s+/g, ' . ')
+    .replace(/\b(double|triple)\s+(\w+)/g, (_, n, w) => (DIGIT_WORDS[w] ?? w).repeat(n === 'double' ? 2 : 3))
+    .replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine)\b/g, (w) => DIGIT_WORDS[w]);
+  if (!v.includes('@')) v = v.replace(/\s+at\s+(?=[\w.-]+(\s*\.\s*|\s*$))/, ' @ ');
+  v = v.replace(/\s+/g, '');
+  const [local, domain] = v.split('@');
+  if (domain && FREE_MAIL.test(domain)) v = `${local}@${domain}.com`;
+  return v;
+}
+
+const email = z.preprocess(
+  (v) => (typeof v === 'string' ? normalizeSpokenEmail(v) : v),
+  z
+    .string({ required_error: 'is required - ask the caller for an email address to send their confirmation to' })
+    .email("doesn't look like a valid email - read it back to the caller and ask them to spell the part before the @")
+);
 
 // Takes an industry key, or an industry object directly (a personalised demo's own preset).
 export function createServiceValidator(industryKey = 'clinic') {
