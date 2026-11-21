@@ -44,10 +44,16 @@ export const tools = {
     schema: schemas.checkAvailability,
     invalid: (error) => ({ available: false, error }),
     failed: { available: false, error: 'Could not reach the scheduling system right now.' },
-    async run({ service, date_from, date_to }) {
+    async run({ service, date_from, date_to }, { industry, demo } = {}) {
       const dateFrom = date_from || new Date().toISOString();
       const dateTo = searchWindowEnd(dateFrom, date_to);
-      const slots = await checkAvailability({ service, dateFrom, dateTo });
+      const slots = await checkAvailability({
+        service,
+        dateFrom,
+        dateTo,
+        mock: Boolean(demo),
+        timeZone: industry?.timezone || config.clinicTimezone,
+      });
       return { available: slots.length > 0, slots: slots.slice(0, 4) };
     },
   },
@@ -58,8 +64,8 @@ export const tools = {
     schema: schemas.bookAppointment,
     invalid: (error) => ({ success: false, error }),
     failed: { success: false, error: 'Could not complete the booking right now, offer a callback instead.' },
-    async run({ service, start_time, name, phone, email }, { callId, industry = getIndustry('clinic') }) {
-      const booking = await bookSlot({ service, startTime: start_time, name, phone, email });
+    async run({ service, start_time, name, phone, email }, { callId, industry = getIndustry('clinic'), demo = null }) {
+      const booking = await bookSlot({ service, startTime: start_time, name, phone, email, mock: Boolean(demo) });
 
       insertBooking({
         id: nanoid(),
@@ -73,7 +79,13 @@ export const tools = {
         end_time: null,
         status: booking.status,
         created_at: Date.now(),
+        demo_id: demo?.id ?? null,
       });
+
+      const tz = industry?.timezone || config.clinicTimezone;
+      const when = spokenTime(start_time, 'medium', tz);
+      // Demo bookings are pretend: no CRM contact, no text message to the prospect's number.
+      if (demo) return { success: true, confirmed_time: start_time, message: `Booked ${service} for ${when}.` };
 
       // CRM push and SMS aren't needed to answer the caller — fire them without awaiting so
       // HubSpot/Twilio latency never adds to the spoken response time.
@@ -81,9 +93,7 @@ export const tools = {
         console.error('[crm push failed]', e.message)
       );
 
-      const tz = industry?.timezone || config.clinicTimezone;
       const businessName = industry?.businessName || config.clinicName;
-      const when = spokenTime(start_time, 'medium', tz);
       sendConfirmationSms({
         to: phone,
         body: `You're confirmed for ${service} on ${when}. Reply to this text if you need to reschedule. - ${businessName}`,
@@ -98,7 +108,9 @@ export const tools = {
     invalid: (error) => ({ results: [], error }),
     failed: { results: [], error: 'Knowledge base lookup failed.' },
     async run({ query }, { industry = getIndustry('clinic') } = {}) {
-      const results = await searchKnowledgeBase(query, 3, industry?.id || 'clinic');
+      const results = industry?.searchKnowledgeBase
+        ? industry.searchKnowledgeBase(query, 3)
+        : await searchKnowledgeBase(query, 3, industry?.id || 'clinic');
       return { results: results.map((r) => ({ topic: r.id, info: r.text })) };
     },
   },
@@ -107,7 +119,7 @@ export const tools = {
     schema: schemas.captureLead,
     invalid: (error) => ({ success: false, error }),
     failed: { success: false },
-    async run({ name, phone, email, treatment_interest, budget, urgency }, { callId }) {
+    async run({ name, phone, email, treatment_interest, budget, urgency }, { callId, demo = null }) {
       insertLead({
         id: nanoid(),
         call_id: callId,
@@ -118,6 +130,7 @@ export const tools = {
         budget: budget || null,
         urgency: urgency || null,
         created_at: Date.now(),
+        demo_id: demo?.id ?? null,
       });
 
       if (callId) {
@@ -137,9 +150,11 @@ export const tools = {
         });
       }
 
-      pushLeadToCrm({ name, phone, email, treatmentInterest: treatment_interest, budget, urgency, callId }).catch((e) =>
-        console.error('[crm push failed]', e.message)
-      );
+      if (!demo) {
+        pushLeadToCrm({ name, phone, email, treatmentInterest: treatment_interest, budget, urgency, callId }).catch((e) =>
+          console.error('[crm push failed]', e.message)
+        );
+      }
 
       return { success: true };
     },
@@ -149,8 +164,8 @@ export const tools = {
     schema: schemas.phoneOnly,
     invalid: (error) => ({ found: false, error }),
     failed: { found: false, error: 'Could not look that up right now.' },
-    async run({ phone }, { industry = getIndustry('clinic') } = {}) {
-      const existing = findLatestBookingByPhone(phone);
+    async run({ phone }, { industry = getIndustry('clinic'), demo = null } = {}) {
+      const existing = findLatestBookingByPhone(phone, demo?.id);
       if (!existing) return { found: false };
       const tz = industry?.timezone || config.clinicTimezone;
       return { found: true, service: existing.service, when: spokenTime(existing.start_time, 'full', tz) };
@@ -161,8 +176,8 @@ export const tools = {
     schema: schemas.phoneOnly,
     invalid: (error) => ({ success: false, error }),
     failed: { success: false, error: 'Could not cancel right now, offer a callback instead.' },
-    async run({ phone }) {
-      const existing = findLatestBookingByPhone(phone);
+    async run({ phone }, { demo = null } = {}) {
+      const existing = findLatestBookingByPhone(phone, demo?.id);
       if (!existing) return NO_BOOKING;
 
       await cancelBooking({ externalBookingId: existing.external_booking_id, reason: 'Patient requested cancellation' });
@@ -176,14 +191,14 @@ export const tools = {
     schema: schemas.rescheduleAppointment,
     invalid: (error) => ({ success: false, error }),
     failed: { success: false, error: 'Could not reschedule right now, offer a callback instead.' },
-    async run({ phone, new_start_time }, { callId, industry = getIndustry('clinic') }) {
-      const existing = findLatestBookingByPhone(phone);
+    async run({ phone, new_start_time }, { callId, industry = getIndustry('clinic'), demo = null }) {
+      const existing = findLatestBookingByPhone(phone, demo?.id);
       if (!existing) return NO_BOOKING;
 
       await cancelBooking({ externalBookingId: existing.external_booking_id, reason: 'Rescheduled by patient' });
       updateBookingStatus(existing.id, 'cancelled');
 
-      const rebooked = await bookSlot({ service: existing.service, startTime: new_start_time, name: existing.name, phone, email: existing.email });
+      const rebooked = await bookSlot({ service: existing.service, startTime: new_start_time, name: existing.name, phone, email: existing.email, mock: Boolean(demo) });
       insertBooking({
         id: nanoid(),
         call_id: callId,
@@ -196,11 +211,13 @@ export const tools = {
         end_time: null,
         status: rebooked.status,
         created_at: Date.now(),
+        demo_id: demo?.id ?? null,
       });
 
       const tz = industry?.timezone || config.clinicTimezone;
       const businessName = industry?.businessName || config.clinicName;
       const when = spokenTime(new_start_time, 'medium', tz);
+      if (demo) return { success: true, message: `Moved your ${existing.service} appointment to ${when}.` };
       sendConfirmationSms({
         to: phone,
         body: `Your ${existing.service} appointment was moved to ${when}. - ${businessName}`,
@@ -214,8 +231,8 @@ export const tools = {
     schema: schemas.updateAppointmentDetails,
     invalid: (error) => ({ success: false, error }),
     failed: { success: false, error: 'Could not update those details right now, offer a callback instead.' },
-    async run({ phone, new_name, new_email, new_phone }, { callId }) {
-      const existing = findLatestBookingByPhone(phone);
+    async run({ phone, new_name, new_email, new_phone }, { callId, demo = null }) {
+      const existing = findLatestBookingByPhone(phone, demo?.id);
       if (!existing) return NO_BOOKING;
 
       // Cal.com has no endpoint to edit an attendee's name/email/phone directly - only
@@ -227,7 +244,7 @@ export const tools = {
       const email = new_email || existing.email;
       const updatedPhone = new_phone || phone;
 
-      const rebooked = await bookSlot({ service: existing.service, startTime: existing.start_time, name, phone: updatedPhone, email });
+      const rebooked = await bookSlot({ service: existing.service, startTime: existing.start_time, name, phone: updatedPhone, email, mock: Boolean(demo) });
       insertBooking({
         id: nanoid(),
         call_id: callId,
@@ -240,6 +257,7 @@ export const tools = {
         end_time: null,
         status: rebooked.status,
         created_at: Date.now(),
+        demo_id: demo?.id ?? null,
       });
 
       return { success: true, message: 'Updated the details on your appointment.' };
@@ -249,12 +267,14 @@ export const tools = {
 
 // Validates, runs, and never throws: every outcome is a plain object the agent can read, because a
 // voice platform that gets an HTTP error just goes quiet instead of telling the caller anything.
-export async function runTool(name, args, { callId = null, industryKey = null } = {}) {
+// `demo` ({ id, industry }) runs the tool for a personalised website demo: that clinic's own
+// services and knowledge base, fake calendar slots, and nothing sent to the CRM or by SMS.
+export async function runTool(name, args, { callId = null, industryKey = null, demo = null } = {}) {
   const tool = tools[name];
   if (!tool) return { success: false, error: `Unknown tool "${name}".` };
 
-  const industry = getIndustry(industryKey || args?.industry);
-  const industrySchemas = buildSchemas(industry.id);
+  const industry = demo?.industry || getIndustry(industryKey || args?.industry);
+  const industrySchemas = buildSchemas(demo ? industry : industry.id);
   const schemaMap = {
     check_availability: industrySchemas.checkAvailability,
     book_appointment: industrySchemas.bookAppointment,
@@ -271,7 +291,7 @@ export async function runTool(name, args, { callId = null, industryKey = null } 
   if (error) return tool.invalid(error);
 
   try {
-    return await tool.run(data, { callId, industry });
+    return await tool.run(data, { callId, industry, demo });
   } catch (err) {
     console.error(`[${name}]`, err.message);
     return tool.failed;

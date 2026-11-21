@@ -10,6 +10,7 @@ import { retellWebhookRouter } from './routes/retellWebhook.js';
 import { vapiWebhookRouter } from './routes/vapiWebhook.js';
 import { blandWebhookRouter } from './routes/blandWebhook.js';
 import { dashboardRouter } from './routes/dashboard.js';
+import { demoRouter } from './routes/demo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,7 +48,19 @@ const dashboardLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Building a profile fetches a prospect's website - cheap when cached, but not something a
+// stranger should be able to loop on.
+const demoLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: config.demo.rateLimitPerMinute,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many requests, slow down.' },
+});
+
 app.get('/health', (req, res) => res.json({ ok: true }));
+
+app.use('/demo', demoLimiter, demoRouter);
 
 app.use('/functions', functionsLimiter, requireFunctionsSecret, functionsRouter);
 app.use('/webhooks/retell', retellWebhookRouter);

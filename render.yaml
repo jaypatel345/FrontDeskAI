@@ -38,3 +38,10 @@ services:
         sync: false
       - key: HUMAN_TRANSFER_NUMBER
         sync: false
+      # Optional: better website -> demo profile extraction (heuristics are used without it).
+      - key: OPENAI_API_KEY
+        sync: false
+      # Which sites' pages may call /demo/* from a browser (comma-separated). Defaults to
+      # upperlayerstudio.com (with and without www) plus localhost.
+      - key: DEMO_ALLOWED_ORIGINS
+        sync: false

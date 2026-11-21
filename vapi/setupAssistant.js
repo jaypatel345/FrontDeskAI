@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import axios from 'axios';
 import { config } from '../src/config.js';
-import { getVapiAssistant, assistant as defaultAssistant } from './assistant.js';
+import { getVapiAssistant, getVapiDemoAssistant, assistant as defaultAssistant } from './assistant.js';
 import { listIndustryIds, normalizeIndustryKey } from '../src/industries/registry.js';
 
 if (!config.vapi.privateKey) {
@@ -27,7 +27,8 @@ function getStateFile(industryKey) {
 }
 
 async function setupSingleAssistant(industryKey) {
-  const assistantPayload = industryKey === 'clinic' ? defaultAssistant : getVapiAssistant(industryKey);
+  const assistantPayload =
+    industryKey === 'clinic' ? defaultAssistant : industryKey === 'demo' ? getVapiDemoAssistant() : getVapiAssistant(industryKey);
   const stateFile = getStateFile(industryKey);
   const existing = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf-8')) : null;
 
@@ -44,7 +45,7 @@ async function setupSingleAssistant(industryKey) {
   }
 
   fs.writeFileSync(stateFile, JSON.stringify({ assistant_id: assistantId, industry: industryKey }, null, 2));
-  console.log(`Tools and call events go to: ${config.baseUrl}/webhooks/vapi/${industryKey}`);
+  console.log(`Tools and call events go to: ${assistantPayload.server.url}`);
   console.log(`Open "${assistantPayload.name}" in Vapi dashboard to test!`);
   return assistantId;
 }
@@ -53,9 +54,11 @@ async function main() {
   const rawArg = process.argv[2] ? process.argv[2].replace(/^--industry=/, '').trim().toLowerCase() : null;
 
   if (rawArg === 'all') {
-    for (const key of listIndustryIds()) {
+    for (const key of [...listIndustryIds(), 'demo']) {
       await setupSingleAssistant(key);
     }
+  } else if (rawArg === 'demo') {
+    await setupSingleAssistant('demo');
   } else if (rawArg) {
     const norm = normalizeIndustryKey(rawArg);
     if (!norm) {

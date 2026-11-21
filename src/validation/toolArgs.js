@@ -52,8 +52,9 @@ const email = z
   .trim()
   .email("doesn't look like a valid email - spell it back to the caller letter by letter and confirm");
 
+// Takes an industry key, or an industry object directly (a personalised demo's own preset).
 export function createServiceValidator(industryKey = 'clinic') {
-  const industry = getIndustry(industryKey);
+  const industry = industryKey && typeof industryKey === 'object' ? industryKey : getIndustry(industryKey);
   const svcList = industry.services || CLINIC_SERVICES;
   const canonicalFn = industry.canonicalService || clinicCanonicalService;
 

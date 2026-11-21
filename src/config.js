@@ -70,6 +70,18 @@ export const config = {
   clinicLocation: process.env.CLINIC_LOCATION || 'Los Angeles, California',
   dbPath: process.env.DB_PATH || './data/clinic.db',
 
+  // Personalised website demos (src/routes/demo.js): which sites' pages may call the API.
+  demo: {
+    allowedOrigins: (
+      process.env.DEMO_ALLOWED_ORIGINS ||
+      'https://upperlayerstudio.com,https://www.upperlayerstudio.com,http://localhost:3000,http://localhost:3001'
+    )
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+    rateLimitPerMinute: Number(process.env.DEMO_RATE_LIMIT_PER_MINUTE) || 30,
+  },
+
   defaultIndustry: process.env.DEFAULT_INDUSTRY || 'clinic',
   industries: {
     clinic: {
