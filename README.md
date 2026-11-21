@@ -54,6 +54,29 @@ call flow today with zero paid accounts, then flip on real credentials one at a 
   `performanceMetrics.turnLatencyAverage` is stored as the call's response latency on the dashboard.
 - Every request carries `x-functions-secret` (set as `server.headers` on the assistant and each tool).
 
+### Personalised website demos
+
+Every prospect gets a demo built from their own website:
+`upperlayerstudio.com/demo/clinic?url=theirclinic.com`.
+
+- [`src/services/siteProfile.js`](src/services/siteProfile.js) reads the homepage plus up to 5
+  service / price / about / contact pages and extracts name, services with prices, doctors, hours,
+  address, currency and timezone (JSON-LD, `tel:` links and price patterns; an LLM pass on top when
+  `OPENAI_API_KEY` is set). Private and local addresses are refused.
+- `POST /demo/profiles {url, name?, city?, doctor?}` builds (or returns the saved) profile plus the
+  prompt variables; `GET /demo/profiles/:id` reads one. CORS is limited to `DEMO_ALLOWED_ORIGINS`.
+- The demo assistant (`npm run setup:vapi:demo`) has the same tools and speed settings as the real
+  one. Its server URL is `/webhooks/vapi/demo`, so its tools always run in demo mode: that clinic's
+  own knowledge base, fake calendar slots, nothing sent to Cal.com, HubSpot or SMS, and demo
+  bookings are invisible to the real phone line.
+
+### Latency tools
+
+- `npm run latency [-- 20]`: average time per stage (turn, LLM, voice, transcriber, endpointing)
+  over the last N Vapi calls. The dashboard shows the same breakdown per call.
+- `npm run bench:models [-- openai:gpt-4.1-nano ...]`: compares LLMs through Vapi's chat API on the
+  same scripted turns (speed, and whether the right tool was called). Never books anything.
+
 ### Retell and Bland
 
 Both Retell and Bland put brand-new accounts on hold for manual anti-fraud verification before

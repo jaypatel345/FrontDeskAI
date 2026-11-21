@@ -21,13 +21,68 @@
 
 Earlier Retell calls (Sept, 33 calls): 1,632ms average.
 
-## Progress
+## Progress (updated 2026-11-21)
 
 - [x] 0.1 Plan in repo · [x] 0.2 Baseline
-- [ ] 1.1 Per-stage timing · [ ] 1.2 Turn timing · [ ] 1.3 Shrink prompt · [ ] 1.4 Model pick · [ ] 1.5 Voice/STT · [ ] 1.6 Tool turns · [ ] 1.7 Lock in
-- [ ] 2.1 Site → profile · [ ] 2.2 Storage · [ ] 2.3 API · [ ] 2.4 Demo assistant · [ ] 2.5 Tools per profile · [ ] 2.6 Deploy
-- [ ] 3.1 Demo page profile · [ ] 3.2 Simple vapi.start · [ ] 3.3 Outreach links · [ ] 3.4 Check
-- [ ] 4 End-to-end verification
+- [x] 1.1 Per-stage timing · [x] 1.2 Turn timing · [x] 1.3 Shrink prompt · [x] 1.4 Model pick · [~] 1.5 Voice/STT · [x] 1.6 Tool turns · [~] 1.7 Lock in
+- [x] 2.1 Site → profile · [x] 2.2 Storage · [x] 2.3 API · [x] 2.4 Demo assistant · [x] 2.5 Tools per profile · [x] 2.6 Deploy
+- [x] 3.1 Demo page profile · [x] 3.2 Simple vapi.start · [x] 3.3 Outreach links · [x] 3.4 Check
+- [ ] 4 End-to-end verification: needs real voice calls (see "Still to do")
+
+## Results so far
+
+**Deployed:** FrontDesk `main` (Render) and all four Vapi assistants (clinic, real estate, general
+business, and the new demo assistant `a9deffeb-1d9e-42d9-a2f8-4a419dfdc31b`). The Upper Layer
+Studio demo page is on branch `client-website-demos` (not merged, not live yet). The outreach
+change is in that repo's `scripts/uls_outreach.py`, uncommitted next to other edits in that file.
+
+**What changed for speed**
+- Prompt the LLM reads every turn: clinic 7.7k → 2.4k characters, real estate 6.7k → 1.8k,
+  general business 6.2k → 1.7k; tool descriptions roughly halved.
+- Temperature 0.7 → 0.4, a "short first sentence" rule, tighter endpointing (0.1s wait, 0.35s
+  after an unpunctuated phrase) and interruption settings.
+- Calendar: the old cache key included the exact millisecond, so it never hit and every
+  availability check paid Cal.com's ~1.6s. Now one 35-day window is cached per day and prefetched
+  when a call starts; a cached lookup takes ~0ms.
+- A bare date for the search window used to be rejected, forcing a second tool call; now accepted.
+- Offered slots are spread across days (3 returned, the agent offers 2).
+
+**Model comparison (1.4): Vapi chat API, 5 scripted turns × 2, 2026-11-21**
+
+| Model | Median turn (chat API, incl. tools) | Correct |
+|---|---|---|
+| openai:gpt-4.1-mini (kept) | 1,680ms | 10/10 |
+| openai:gpt-4.1-nano | 1,081ms | 6/10 |
+| openai:gpt-4o-mini | 1,725ms | 9/10 |
+| groq:llama-3.3-70b-versatile | 1,655ms | 8/10 |
+| google:gemini-2.0-flash | 1,535ms | 6/10 |
+
+Only gpt-4.1-mini made every tool choice correctly and avoided medical advice, so it stays; the
+LLM gain comes from the shorter prompt instead.
+
+**Personalised demos, checked live:** three real Dubai clinic websites built profiles in 2–6s with
+the right name, city, currency (AED), doctors and services. The demo assistant answered from the
+clinic's own site, gave fake slots in Dubai time and declined a pregnancy/Botox medical question.
+Vapi accepted a demo web call, and the call record carries `demo_id`, which is how tool calls
+find the clinic.
+
+## Still to do
+
+1. **Measure the new turn latency on real calls.** Make 5–10 test calls (Vapi dashboard "Talk to
+   Assistant", or the demo page), then run `npm run latency`. Target ≤ ~800ms average. Not
+   measured yet, so no new number is claimed anywhere.
+2. **1.5 voice:** compare Cartesia sonic-3.5 with a faster Cartesia model on real calls; try
+   Vapi smart endpointing if callers get cut off.
+3. **Fix Cal.com availability:** the event type is open about 7:30 PM to midnight Pacific (Indian
+   daytime), so real callers are offered evening and midnight slots. Set the clinic's hours in Cal.com.
+4. **Keep Render awake:** confirm the GitHub variable `RENDER_URL` is set so
+   `.github/workflows/keep-awake.yml` pings it (or move to Render Starter). The free plan also wipes
+   saved demo profiles on restart; they rebuild from the URL on the next visit (2–6s).
+5. **Merge `client-website-demos`** in the Upper Layer Studio repo to put the new demo page live,
+   and review the `uls_outreach.py` change before the next send.
+6. Sites that block bots (one returned 403 in testing) or don't load fall back to the details in
+   the link (name, city). Adding `OPENAI_API_KEY` on Render improves extraction on sites with
+   little structured data.
 
 **Order:** Phase 0 → 1 (speed) → 2 (FrontDesk demo profiles) → 3 (ULS demo page and outreach) → 4 (end-to-end check). Each step ends with a check, so we know it worked before moving on.
 
